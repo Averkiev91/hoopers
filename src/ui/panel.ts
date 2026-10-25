@@ -18,7 +18,6 @@ export interface PanelHandlers {
   onDelete(): void
   onNew(): void
   onSave(): void
-  onOpen(file: File): void
 }
 
 export interface PanelView {
@@ -103,9 +102,7 @@ export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(v
     </section>
     <section class="file-actions">
       <button type="button" id="save">Сохранить</button>
-      <button type="button" id="open">Открыть</button>
       <button type="button" id="new">Новый</button>
-      <input id="file" type="file" accept="application/json,.json" hidden>
     </section>
   `
 
@@ -128,8 +125,7 @@ export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(v
   const warningList = host.querySelector<HTMLUListElement>('#warning-list')
   const ok = host.querySelector<HTMLElement>('#ok')
   const status = host.querySelector<HTMLElement>('#status')
-  const fileInput = host.querySelector<HTMLInputElement>('#file')
-  if (!selectionBlock || !selectionTitle || !obstacleFields || !signFields || !count || !warningList || !ok || !status || !fileInput) {
+  if (!selectionBlock || !selectionTitle || !obstacleFields || !signFields || !count || !warningList || !ok || !status) {
     throw new Error('Панель собрана не полностью')
   }
 
@@ -161,13 +157,7 @@ export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(v
   halfButton.addEventListener('click', () => handlers.onHalf(halfButton.getAttribute('aria-pressed') !== 'true'))
   deleteButton.addEventListener('click', () => handlers.onDelete())
   requiredButton(host, '#save').addEventListener('click', () => handlers.onSave())
-  requiredButton(host, '#open').addEventListener('click', () => fileInput.click())
   requiredButton(host, '#new').addEventListener('click', () => handlers.onNew())
-  fileInput.addEventListener('change', () => {
-    const file = fileInput.files?.[0]
-    fileInput.value = ''
-    if (file) handlers.onOpen(file)
-  })
 
   const syncSelection = (view: PanelView): void => {
     const selected = view.selection

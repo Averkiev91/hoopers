@@ -22,25 +22,11 @@ export function loadDraft(): CourseDocument | null {
   }
 }
 
-export function downloadCourse(course: CourseDocument): void {
-  const blob = new Blob([serializeCourse(course)], { type: 'application/json' })
+export function downloadPicture(dataUrl: string): void {
   const link = document.createElement('a')
-  const url = URL.createObjectURL(blob)
-  link.href = url
-  link.download = 'trassa-hupers.json'
+  link.href = dataUrl
+  link.download = 'trassa-hupers.png'
   document.body.append(link)
   link.click()
   link.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 0)
-}
-
-export async function readCourseFile(file: File): Promise<CourseDocument> {
-  const text = await file.text()
-  let raw: unknown
-  try {
-    raw = JSON.parse(text)
-  } catch {
-    throw new Error('Файл не является JSON')
-  }
-  return parseCourse(raw)
 }

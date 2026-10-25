@@ -5,7 +5,7 @@ import { SIZE_LIMITS } from './rules/equipment.ts'
 import type { SizeAxis } from './rules/equipment.ts'
 import { checkCourse } from './rules/classChecks.ts'
 import { createStore } from './state/store.ts'
-import { downloadCourse, loadDraft, readCourseFile, saveDraft } from './persist/storage.ts'
+import { downloadPicture, loadDraft, saveDraft } from './persist/storage.ts'
 import { createViewport } from './scene/viewport.ts'
 import { syncCourseView } from './scene/courseView.ts'
 import { mountPanel } from './ui/panel.ts'
@@ -106,12 +106,9 @@ const panel = mountPanel(panelHost, {
     store.replace(createDefaultCourse())
   },
   onSave() {
-    downloadCourse(store.get())
-    status = 'Чертёж сохранён в файл.'
+    downloadPicture(viewport.capture())
+    status = 'Картинка сохранена.'
     render()
-  },
-  onOpen(file) {
-    void openFile(file)
   },
 })
 
@@ -251,15 +248,3 @@ function removeSelected() {
   })
 }
 
-async function openFile(file: File) {
-  try {
-    const course = await readCourseFile(file)
-    selection = null
-    tool = 'select'
-    status = `Открыт файл ${file.name}.`
-    store.replace(course)
-  } catch (error) {
-    status = error instanceof Error ? error.message : 'Не удалось открыть файл'
-    render()
-  }
-}

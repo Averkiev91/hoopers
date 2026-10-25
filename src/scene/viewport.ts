@@ -15,6 +15,7 @@ export interface Viewport {
   zoomTop(factor: number): void
   ndc(event: { clientX: number; clientY: number }): THREE.Vector2
   pointOnGround(clientX: number, clientY: number): THREE.Vector3 | null
+  capture(): string
   start(): void
 }
 
@@ -130,6 +131,18 @@ export function createViewport(host: HTMLElement): Viewport {
       if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return null
       groundRay.setFromCamera(viewport.ndc({ clientX, clientY }), view === 'top' ? topCamera : perspectiveCamera)
       return groundRay.ray.intersectPlane(groundPlane, groundHit) ? groundHit.clone() : null
+    },
+    capture() {
+      if (view === 'top') {
+        topCamera.position.set(topTarget.x, 80, topTarget.z)
+        topCamera.up.set(0, 0, 1)
+        topCamera.lookAt(topTarget)
+        renderer.render(scene, topCamera)
+      } else {
+        mirrorProjectionX(perspectiveCamera)
+        renderer.render(scene, perspectiveCamera)
+      }
+      return renderer.domElement.toDataURL('image/png')
     },
     start() {
       renderer.setAnimationLoop(() => {
