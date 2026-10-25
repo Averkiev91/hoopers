@@ -275,8 +275,9 @@ function tunnelVolume(diameter: number, length: number): THREE.Group {
 
 export function createSignPlate(label: string, view: ViewMode): THREE.Mesh {
   const geometry = new THREE.PlaneGeometry(0.8, 0.62)
-  // Камера сверху считает «верх» осью +Z, а у лежащей плоскости верх текстуры смотрит в −Z.
-  if (view === 'top') flipUvY(geometry)
+  // Сверху верх текстуры смотрит в −Z. В объёме проекция зеркалит X, и без отражения UV цифры читаются наоборот.
+  if (view === 'top') flipUv(geometry, 'y')
+  else flipUv(geometry, 'x')
   const material = new THREE.MeshBasicMaterial({
     map: numberTexture(label),
     side: THREE.DoubleSide,
@@ -288,10 +289,11 @@ export function createSignPlate(label: string, view: ViewMode): THREE.Mesh {
   return plate
 }
 
-function flipUvY(geometry: THREE.BufferGeometry): void {
+function flipUv(geometry: THREE.BufferGeometry, axis: 'x' | 'y'): void {
   const uv = geometry.getAttribute('uv')
   for (let index = 0; index < uv.count; index += 1) {
-    uv.setY(index, 1 - uv.getY(index))
+    if (axis === 'y') uv.setY(index, 1 - uv.getY(index))
+    else uv.setX(index, 1 - uv.getX(index))
   }
 }
 
