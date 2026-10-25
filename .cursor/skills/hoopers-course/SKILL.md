@@ -12,7 +12,7 @@ description: Правит локальный конструктор трасс �
 - `src/rules/classChecks.ts` — предупреждения, без блокировки правки
 - `src/scene/viewport.ts` — одна сцена, ортокамера сверху и перспектива
 - `src/scene/courseView.ts`, `src/scene/meshes.ts` — ринг, сетка, снаряды
-- `src/editor/interaction.ts` — перетаскивание стоящих снарядов, знаков и поворот. Новые ставятся переносом с палитры.
+- `src/editor/interaction.ts` — перетаскивание стоящих снарядов, знаков, фигурки и поворот. Кнопка включает постановку, щелчок по рингу ставит; перенос с кнопки тоже ставит.
 - `src/ui/panel.ts` — русская панель
 - `src/persist/storage.ts` — черновик `hoopers.course.draft` и файл `trassa-hupers.json`
 

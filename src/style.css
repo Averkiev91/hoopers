@@ -53,13 +53,6 @@ h2 {
   color: #5c675c;
 }
 
-.panel-header p,
-.hint {
-  margin-top: 4px;
-  color: #5c675c;
-  font-size: 13px;
-}
-
 .fields, .tools, .segmented, .file-actions {
   display: grid;
   gap: 8px;
@@ -74,7 +67,9 @@ label {
 }
 
 .tools button[data-place] {
-  cursor: grab;
+  min-height: 42px;
+  padding: 10px 12px;
+  cursor: pointer;
   touch-action: none;
 }
 
@@ -102,9 +97,7 @@ input, select {
   background: #fff;
 }
 
-.tools { grid-template-columns: 1fr 1fr; }
-
-.tools button:first-child { grid-column: 1 / -1; }
+.tools { grid-template-columns: 1fr; }
 
 .segmented, .file-actions { grid-template-columns: 1fr 1fr; }
 
@@ -140,8 +133,6 @@ button.is-active {
   grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
-
-#selection-meta { margin-top: 4px; color: #3d4a40; }
 
 .warnings ul {
   margin: 8px 0 0;

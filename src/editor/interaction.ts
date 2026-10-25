@@ -13,6 +13,7 @@ interface EditorBindings {
   store: Store
   getTool(): Tool
   select(selection: Selection | null): void
+  place(clientX: number, clientY: number): void
   render(): void
 }
 
@@ -23,7 +24,7 @@ type Drag =
   | { kind: 'zone'; offsetX: number; offsetY: number }
 
 export function bindEditor(bindings: EditorBindings): void {
-  const { viewport, store, getTool, select, render } = bindings
+  const { viewport, store, getTool, select, place, render } = bindings
   const dom = viewport.domElement
   let drag: Drag | null = null
   let pointerId = -1
@@ -93,7 +94,7 @@ export function bindEditor(bindings: EditorBindings): void {
       render()
       return
     }
-    if (hit?.kind === 'zone' && tool === 'select' && point) {
+    if (hit?.kind === 'zone' && point) {
       const zone = store.get().handlerZone
       beginDrag(event, {
         kind: 'zone',
@@ -111,7 +112,7 @@ export function bindEditor(bindings: EditorBindings): void {
         target: viewport.controls.target.clone(),
       }
     }
-    armed = 'clear'
+    armed = tool === 'select' ? 'clear' : 'place'
     pointerId = event.pointerId
   }
 
@@ -160,6 +161,10 @@ export function bindEditor(bindings: EditorBindings): void {
       viewport.controls.target.copy(cameraSnapshot.target)
       viewport.controls.update()
       cameraSnapshot = null
+    }
+    if (wasArmed === 'place') {
+      place(event.clientX, event.clientY)
+      return
     }
     if (wasArmed === 'clear') {
       select(null)

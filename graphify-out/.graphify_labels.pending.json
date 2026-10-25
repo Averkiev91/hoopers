@@ -7,5 +7,9 @@
   "5": "panel.ts",
   "6": "classChecks.ts",
   "7": "compilerOptions",
-  "8": "CourseDocument"
+  "8": "CourseDocument",
+  "9": "main.ts",
+  "10": "courseView.ts",
+  "11": "guard-dev-server.mjs",
+  "12": "Конструктор трасс хуперса"
 }

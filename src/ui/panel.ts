@@ -36,7 +36,6 @@ export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(v
   host.innerHTML = `
     <header class="panel-header">
       <h1>Конструктор трасс</h1>
-      <p>Сетка 1 м, привязка 0,5 м</p>
     </header>
     <section class="fields">
       <label>Длина, м <input id="length" type="number" min="1" max="120" step="0.5"></label>
@@ -50,28 +49,30 @@ export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(v
       </label>
     </section>
     <section>
-      <h2>Снаряд</h2>
+      <h2>Снаряды</h2>
       <div class="tools" role="toolbar">
-        <button type="button" data-tool="select">Выбор</button>
         <button type="button" data-place="arch">Арка</button>
         <button type="button" data-place="barrel">Бочка</button>
         <button type="button" data-place="gate">Ворота</button>
         <button type="button" data-place="tunnel">Туннель</button>
         <button type="button" data-place="cone">Конус</button>
-        <button type="button" data-place="sign">Номер</button>
       </div>
-      <p class="hint">Перетащите снаряд или номер на ринг. Жёлтый диск и кнопки поворачивают на 15°.</p>
     </section>
     <section>
-      <h2>Зона управления</h2>
+      <h2>Номера</h2>
+      <div class="tools">
+        <button type="button" data-place="sign">Добавить номер</button>
+      </div>
+    </section>
+    <section>
+      <h2>Зона 2 м</h2>
       <div class="segmented">
-        <button type="button" data-zone="circle">Круг 2 м</button>
-        <button type="button" data-zone="square">Квадрат 2×2</button>
+        <button type="button" data-zone="circle">Круг</button>
+        <button type="button" data-zone="square">Квадрат</button>
       </div>
     </section>
     <section id="selection" hidden>
       <h2 id="selection-title">Снаряд</h2>
-      <p id="selection-meta"></p>
       <div id="obstacle-fields">
         <div class="rotate-row">
           <button type="button" id="rotate-left">−15°</button>
@@ -119,7 +120,6 @@ export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(v
   const halfButton = requiredButton(host, '#half')
   const selectionBlock = host.querySelector<HTMLElement>('#selection')
   const selectionTitle = host.querySelector<HTMLElement>('#selection-title')
-  const selectionMeta = host.querySelector<HTMLElement>('#selection-meta')
   const obstacleFields = host.querySelector<HTMLElement>('#obstacle-fields')
   const signFields = host.querySelector<HTMLElement>('#sign-fields')
   const deleteButton = requiredButton(host, '#delete')
@@ -128,7 +128,7 @@ export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(v
   const ok = host.querySelector<HTMLElement>('#ok')
   const status = host.querySelector<HTMLElement>('#status')
   const fileInput = host.querySelector<HTMLInputElement>('#file')
-  if (!selectionBlock || !selectionTitle || !selectionMeta || !obstacleFields || !signFields || !count || !warningList || !ok || !status || !fileInput) {
+  if (!selectionBlock || !selectionTitle || !obstacleFields || !signFields || !count || !warningList || !ok || !status || !fileInput) {
     throw new Error('Панель собрана не полностью')
   }
 
@@ -141,7 +141,6 @@ export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(v
   host.addEventListener('click', (event) => {
     const target = event.target
     if (!(target instanceof HTMLButtonElement)) return
-    if (target.dataset.tool === 'select') handlers.onTool('select')
     const zone = target.dataset.zone
     if (zone === 'circle' || zone === 'square') handlers.onZoneShape(zone)
     const view = target.dataset.view
@@ -171,16 +170,9 @@ export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(v
 
   const syncSelection = (view: PanelView): void => {
     const selected = view.selection
-    selectionBlock.hidden = selected === null
-    if (!selected) return
-    if (selected.kind === 'zone') {
-      selectionTitle.textContent = 'Зона управления'
-      selectionMeta.textContent = 'Перетащите жёлтую зону по рингу.'
-      obstacleFields.hidden = true
-      signFields.hidden = true
-      deleteButton.hidden = true
-      return
-    }
+    const editable = selected !== null && selected.kind !== 'zone'
+    selectionBlock.hidden = !editable
+    if (!selected || selected.kind === 'zone') return
     deleteButton.hidden = false
     if (selected.kind === 'sign') {
       const sign = view.course.signs.find((item) => item.id === selected.id)
@@ -189,7 +181,6 @@ export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(v
         return
       }
       selectionTitle.textContent = 'Номер'
-      selectionMeta.textContent = `${sign.x} м × ${sign.y} м`
       obstacleFields.hidden = true
       signFields.hidden = false
       setValue(numberInput, String(sign.number))
@@ -201,7 +192,6 @@ export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(v
       return
     }
     selectionTitle.textContent = OBSTACLE_LABEL[obstacle.type]
-    selectionMeta.textContent = `${obstacle.x} м × ${obstacle.y} м, поворот ${obstacle.rotationDeg}°`
     obstacleFields.hidden = false
     signFields.hidden = true
     syncSize(obstacle)
@@ -226,12 +216,15 @@ export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(v
     halfButton.setAttribute('aria-pressed', obstacle.half ? 'true' : 'false')
   }
 
+  let activeTool: Tool = 'select'
+
   return {
     sync(view) {
       setValue(lengthInput, String(view.course.ring.lengthM))
       setValue(widthInput, String(view.course.ring.widthM))
       if (document.activeElement !== classSelect) classSelect.value = view.course.classLevel
-      press(host, 'tool', view.tool)
+      activeTool = view.tool
+      press(host, 'place', view.tool)
       press(host, 'zone', view.course.handlerZone.shape)
       press(host, 'view', view.view)
       count.textContent = `Снарядов: ${view.course.obstacles.length}, номеров: ${view.course.signs.length}`
@@ -255,27 +248,37 @@ export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(v
     if (!isPlaceable(place)) return
     event.preventDefault()
     const pointerId = event.pointerId
+    const originX = event.clientX
+    const originY = event.clientY
     button.setPointerCapture(pointerId)
-    const ghost = document.createElement('div')
-    ghost.className = 'drag-ghost'
-    ghost.textContent = button.textContent ?? ''
-    document.body.append(ghost)
-    moveGhost(ghost, event)
+    let ghost: HTMLElement | null = null
     const move = (ev: PointerEvent) => {
       if (ev.pointerId !== pointerId) return
-      moveGhost(ghost, ev)
+      if (!ghost && Math.hypot(ev.clientX - originX, ev.clientY - originY) > 4) {
+        ghost = document.createElement('div')
+        ghost.className = 'drag-ghost'
+        ghost.textContent = button.textContent?.trim() ?? ''
+        document.body.append(ghost)
+      }
+      if (ghost) moveGhost(ghost, ev)
     }
-    const end = (ev: PointerEvent) => {
+    const stop = (ev: PointerEvent) => {
       if (ev.pointerId !== pointerId) return
-      ghost.remove()
+      ghost?.remove()
       button.removeEventListener('pointermove', move)
-      button.removeEventListener('pointerup', end)
-      button.removeEventListener('pointercancel', end)
-      if (ev.type === 'pointerup') handlers.onPlace(place, ev.clientX, ev.clientY)
+      button.removeEventListener('pointerup', stop)
+      button.removeEventListener('pointercancel', stop)
+      if (ev.type !== 'pointerup') return
+      const moved = Math.hypot(ev.clientX - originX, ev.clientY - originY) > 6
+      if (!moved) {
+        handlers.onTool(activeTool === place ? 'select' : place)
+        return
+      }
+      handlers.onPlace(place, ev.clientX, ev.clientY)
     }
     button.addEventListener('pointermove', move)
-    button.addEventListener('pointerup', end)
-    button.addEventListener('pointercancel', end)
+    button.addEventListener('pointerup', stop)
+    button.addEventListener('pointercancel', stop)
   }
 
   function commitRing() {

@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import type { Obstacle } from '../model/course.ts'
+import type { Obstacle, ZoneShape } from '../model/course.ts'
 import type { ViewMode } from '../editor/types.ts'
 import { EQUIPMENT } from '../rules/equipment.ts'
 
@@ -24,13 +24,17 @@ const conePlanDot = planMaterial('#6e2c00')
 const zoneMaterial = new THREE.MeshBasicMaterial({
   color: '#f4d03f',
   transparent: true,
-  opacity: 0.38,
+  opacity: 0.55,
   side: THREE.DoubleSide,
   depthWrite: false,
 })
 const zoneSelectedMaterial = zoneMaterial.clone()
-zoneSelectedMaterial.opacity = 0.62
-const zoneLineMaterial = new THREE.LineBasicMaterial({ color: '#9a7b12' })
+zoneSelectedMaterial.opacity = 0.78
+const zoneCurbMaterial = new THREE.MeshStandardMaterial({ color: '#e6b325', roughness: 0.45 })
+const handlerBodyMaterial = new THREE.MeshStandardMaterial({ color: '#1f4e79', roughness: 0.55 })
+const handlerHeadMaterial = new THREE.MeshStandardMaterial({ color: '#e0b08a', roughness: 0.65 })
+const handlerBodyPlan = planMaterial('#1f4e79')
+const handlerHeadPlan = planMaterial('#e0b08a')
 const selectionMaterial = new THREE.MeshBasicMaterial({ color: '#f7dc6f', side: THREE.DoubleSide })
 const handleMaterial = new THREE.MeshBasicMaterial({ color: '#f4d03f' })
 const pickMaterial = new THREE.MeshBasicMaterial({
@@ -288,8 +292,57 @@ export function createRotateHandle(): THREE.Mesh {
 
 export const selectionMaterialShared = selectionMaterial
 
-export function zoneMaterials(selected: boolean): { fill: THREE.Material; line: THREE.Material } {
-  return { fill: selected ? zoneSelectedMaterial : zoneMaterial, line: zoneLineMaterial }
+export function zoneFillMaterial(selected: boolean): THREE.Material {
+  return selected ? zoneSelectedMaterial : zoneMaterial
+}
+
+export function createZoneRim(shape: ZoneShape): THREE.Group {
+  const group = new THREE.Group()
+  if (shape === 'circle') {
+    const rim = solid(new THREE.TorusGeometry(1, 0.05, 8, 64), zoneCurbMaterial)
+    rim.rotation.x = Math.PI / 2
+    rim.position.y = 0.05
+    group.add(rim)
+    return group
+  }
+  const height = 0.1
+  const thick = 0.07
+  const span = 2 + thick
+  const edges: Array<[number, number, number, number, number]> = [
+    [span, height, thick, 0, 1],
+    [span, height, thick, 0, -1],
+    [thick, height, span, 1, 0],
+    [thick, height, span, -1, 0],
+  ]
+  for (const [width, edgeHeight, depth, x, z] of edges) {
+    const edge = solid(new THREE.BoxGeometry(width, edgeHeight, depth), zoneCurbMaterial)
+    edge.position.set(x, edgeHeight / 2, z)
+    group.add(edge)
+  }
+  return group
+}
+
+export function createHandler(view: ViewMode): THREE.Group {
+  const group = new THREE.Group()
+  group.name = 'handler'
+  if (view === 'top') {
+    group.add(layFlat(new THREE.CircleGeometry(0.24, 24), handlerBodyPlan, 0.09))
+    const head = layFlat(new THREE.CircleGeometry(0.12, 20), handlerHeadPlan, 0.1)
+    head.position.z = 0.3
+    group.add(head)
+    return group
+  }
+  const legs = solid(new THREE.CylinderGeometry(0.09, 0.1, 0.78, 12), handlerBodyMaterial)
+  legs.position.y = 0.39
+  const torso = solid(new THREE.CylinderGeometry(0.2, 0.17, 0.55, 16), handlerBodyMaterial)
+  torso.position.y = 1.02
+  const arms = solid(new THREE.CylinderGeometry(0.045, 0.045, 0.52, 8), handlerBodyMaterial)
+  arms.rotation.z = Math.PI / 2
+  arms.position.y = 1.18
+  const head = solid(new THREE.SphereGeometry(0.15, 18, 14), handlerHeadMaterial)
+  head.position.y = 1.52
+  group.add(legs, torso, arms, head)
+  return group
 }
 
 function numberTexture(label: string): THREE.CanvasTexture {

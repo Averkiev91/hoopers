@@ -122,6 +122,10 @@ bindEditor({
   select(next) {
     selection = next
   },
+  place(clientX, clientY) {
+    if (tool === 'select') return
+    placeFromPalette(tool, clientX, clientY)
+  },
   render,
 })
 

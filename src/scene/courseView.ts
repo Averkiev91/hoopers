@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import type { CourseDocument, NumberSign, Obstacle, ZoneShape } from '../model/course.ts'
 import type { Selection, ViewMode } from '../editor/types.ts'
 import { GRID_M, obstacleReach } from '../rules/equipment.ts'
-import { createObstacleMesh, createRotateHandle, createSignPlate, selectionMaterialShared, zoneMaterials } from './meshes.ts'
+import { createHandler, createObstacleMesh, createRotateHandle, createSignPlate, createZoneRim, selectionMaterialShared, zoneFillMaterial } from './meshes.ts'
 
 const ROOT_NAME = 'course-root'
 
@@ -18,7 +18,7 @@ export function syncCourseView(scene: THREE.Scene, course: CourseDocument, selec
   root.add(createGround(course))
   root.add(createGrid(course))
   root.add(createBorder(course))
-  root.add(createZone(course, selected?.kind === 'zone'))
+  root.add(createZone(course, selected?.kind === 'zone', view))
   for (const obstacle of course.obstacles) {
     const selectedObstacle = selected?.kind === 'obstacle' && selected.id === obstacle.id
     root.add(createObstacleObject(obstacle, selectedObstacle, view))
@@ -85,47 +85,24 @@ function createBorder(course: CourseDocument): THREE.LineLoop {
   return loop
 }
 
-function createZone(course: CourseDocument, selected: boolean): THREE.Group {
+function createZone(course: CourseDocument, selected: boolean, view: ViewMode): THREE.Group {
   const group = new THREE.Group()
   group.name = 'zone'
   group.position.set(course.handlerZone.x, 0, course.handlerZone.y)
-  const materials = zoneMaterials(selected)
-  const shape = course.handlerZone.shape
-  const fill = new THREE.Mesh(zoneGeometry(shape), materials.fill)
+  const fill = new THREE.Mesh(zoneGeometry(course.handlerZone.shape), zoneFillMaterial(selected))
   fill.rotation.x = -Math.PI / 2
   fill.position.y = 0.02
-  fill.userData.kind = 'zone'
   fill.userData.disposeGeometry = true
   group.add(fill)
-
-  const outline = new THREE.LineLoop(zoneOutline(shape), materials.line)
-  outline.userData.disposeGeometry = true
-  ignoreRaycast(outline)
-  group.add(outline)
+  group.add(createZoneRim(course.handlerZone.shape))
+  group.add(createHandler(view))
+  tag(group, { kind: 'zone', id: 'zone' })
   return group
 }
 
 function zoneGeometry(shape: ZoneShape): THREE.BufferGeometry {
   if (shape === 'circle') return new THREE.CircleGeometry(1, 48)
   return new THREE.PlaneGeometry(2, 2)
-}
-
-function zoneOutline(shape: ZoneShape): THREE.BufferGeometry {
-  const points: THREE.Vector3[] = []
-  if (shape === 'circle') {
-    for (let index = 0; index < 48; index += 1) {
-      const angle = (index / 48) * Math.PI * 2
-      points.push(new THREE.Vector3(Math.cos(angle), 0.045, Math.sin(angle)))
-    }
-  } else {
-    points.push(
-      new THREE.Vector3(-1, 0.045, -1),
-      new THREE.Vector3(1, 0.045, -1),
-      new THREE.Vector3(1, 0.045, 1),
-      new THREE.Vector3(-1, 0.045, 1),
-    )
-  }
-  return new THREE.BufferGeometry().setFromPoints(points)
 }
 
 function createSignObject(sign: NumberSign, selected: boolean, view: ViewMode): THREE.Group {
