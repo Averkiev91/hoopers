@@ -88,6 +88,7 @@ export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(v
       <button type="button" id="delete">Удалить</button>
     </section>
     <section>
+      <h2>Вид</h2>
       <div class="segmented">
         <button type="button" data-view="top">Сверху</button>
         <button type="button" data-view="perspective">Объём</button>
