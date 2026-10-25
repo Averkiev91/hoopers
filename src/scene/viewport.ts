@@ -20,7 +20,7 @@ export interface Viewport {
 
 export function createViewport(host: HTMLElement): Viewport {
   const scene = new THREE.Scene()
-  scene.background = new THREE.Color('#b7c4d4')
+  scene.background = new THREE.Color('#d7e4ee')
 
   const renderer = new THREE.WebGLRenderer({ antialias: true })
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -48,9 +48,10 @@ export function createViewport(host: HTMLElement): Viewport {
   orbit._rotateLeft = (angle) => rotateLeft(-angle)
   orbit._panLeft = (distance, matrix) => panLeft(-distance, matrix)
 
-  const hemi = new THREE.HemisphereLight('#f4f7fb', '#6d8b58', 0.85)
+  scene.add(new THREE.AmbientLight('#f6f7f2', 0.55))
+  const hemi = new THREE.HemisphereLight('#f7f8f4', '#d5e4be', 0.45)
   scene.add(hemi)
-  const sun = new THREE.DirectionalLight('#fff6e8', 1.15)
+  const sun = new THREE.DirectionalLight('#fff8ee', 0.85)
   sun.position.set(18, 36, 12)
   sun.castShadow = true
   sun.shadow.mapSize.set(2048, 2048)

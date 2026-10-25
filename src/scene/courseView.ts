@@ -31,19 +31,18 @@ export function syncCourseView(scene: THREE.Scene, course: CourseDocument, selec
 }
 
 function createGround(course: CourseDocument): THREE.Mesh {
-  const material = new THREE.MeshStandardMaterial({
-    color: '#7f9a68',
-    roughness: 1,
-    side: THREE.BackSide,
+  // Без освещения: у стандартного материала трава на экране темнеет почти вдвое.
+  const material = new THREE.MeshBasicMaterial({
+    color: '#b6d498',
+    side: THREE.DoubleSide,
   })
-  material.shadowSide = THREE.FrontSide
   const mesh = new THREE.Mesh(
     new THREE.PlaneGeometry(course.ring.lengthM, course.ring.widthM),
     material,
   )
   mesh.rotation.x = -Math.PI / 2
   mesh.position.set(course.ring.lengthM / 2, 0, course.ring.widthM / 2)
-  mesh.receiveShadow = true
+  mesh.receiveShadow = false
   mesh.name = 'ground'
   mesh.userData.kind = 'ground'
   mesh.userData.disposeGeometry = true
@@ -53,8 +52,8 @@ function createGround(course: CourseDocument): THREE.Mesh {
 
 function createGrid(course: CourseDocument): THREE.Group {
   const group = new THREE.Group()
-  group.add(gridLines(course, GRID_M, '#d5e2c8'))
-  group.add(gridLines(course, 5, '#f4f7ef'))
+  group.add(gridLines(course, GRID_M, '#d5ebc6'))
+  group.add(gridLines(course, 5, '#f4faef'))
   ignoreRaycast(group)
   return group
 }
@@ -84,7 +83,7 @@ function createBorder(course: CourseDocument): THREE.LineLoop {
     new THREE.Vector3(lengthM, 0.04, widthM),
     new THREE.Vector3(0, 0.04, widthM),
   ])
-  const loop = new THREE.LineLoop(geometry, new THREE.LineBasicMaterial({ color: '#243018' }))
+  const loop = new THREE.LineLoop(geometry, new THREE.LineBasicMaterial({ color: '#5f7a4c' }))
   loop.userData.disposeGeometry = true
   loop.userData.disposeMaterial = true
   ignoreRaycast(loop)
