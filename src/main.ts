@@ -1,5 +1,8 @@
 import './style.css'
-import { clampToRing, clampZoneCenter, createDefaultCourse } from './model/course.ts'
+import { clampToRing, clampZoneCenter, createDefaultCourse, normalizeDegrees } from './model/course.ts'
+import type { Obstacle } from './model/course.ts'
+import { SIZE_LIMITS } from './rules/equipment.ts'
+import type { SizeAxis } from './rules/equipment.ts'
 import { checkCourse } from './rules/classChecks.ts'
 import { createStore } from './state/store.ts'
 import { downloadCourse, loadDraft, readCourseFile, saveDraft } from './persist/storage.ts'
@@ -53,12 +56,33 @@ const panel = mountPanel(panelHost, {
     })
   },
   onNumber(number) {
-    if (selection?.kind !== 'obstacle') return
-    const id = selection.id
-    store.update((course) => {
-      const obstacle = course.obstacles.find((item) => item.id === id)
-      if (!obstacle) return
+    updateSelected((obstacle) => {
       obstacle.number = number
+    })
+  },
+  onRotate(delta) {
+    updateSelected((obstacle) => {
+      obstacle.rotationDeg = normalizeDegrees(obstacle.rotationDeg + delta)
+    })
+  },
+  onWidth(width) {
+    updateSelected((obstacle) => {
+      const next = clampAxis(width, SIZE_LIMITS[obstacle.type].width)
+      if (next === null) return
+      obstacle.width = next
+    })
+  },
+  onDepth(depth) {
+    updateSelected((obstacle) => {
+      const next = clampAxis(depth, SIZE_LIMITS[obstacle.type].depth)
+      if (next === null) return
+      obstacle.depth = next
+    })
+  },
+  onHalf(half) {
+    updateSelected((obstacle) => {
+      if (obstacle.type !== 'arch') return
+      obstacle.half = half
     })
   },
   onShowPath(show) {
@@ -130,7 +154,7 @@ function render() {
     const id = selection.id
     if (!course.obstacles.some((obstacle) => obstacle.id === id)) selection = null
   }
-  syncCourseView(viewport.scene, course, selection)
+  syncCourseView(viewport.scene, course, selection, view)
   panel.sync({
     course,
     tool,
@@ -140,6 +164,22 @@ function render() {
     status,
   })
   viewport.domElement.style.cursor = tool === 'select' ? 'default' : 'crosshair'
+}
+
+function updateSelected(change: (obstacle: Obstacle) => void): void {
+  if (selection?.kind !== 'obstacle') return
+  const id = selection.id
+  status = ''
+  store.update((course) => {
+    const obstacle = course.obstacles.find((item) => item.id === id)
+    if (!obstacle) return
+    change(obstacle)
+  })
+}
+
+function clampAxis(value: number, axis: SizeAxis): number | null {
+  if (!Number.isFinite(value)) return null
+  return Number(Math.min(axis.max, Math.max(axis.min, value)).toFixed(2))
 }
 
 function removeSelected() {

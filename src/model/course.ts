@@ -1,4 +1,5 @@
-import { NUMBER_MAX, NUMBER_MIN, SNAP_M, ZONE_SIZE_M } from '../rules/equipment.ts'
+import { defaultObstacleSize, NUMBER_MAX, NUMBER_MIN, SIZE_LABEL, SIZE_LIMITS, SNAP_M, ZONE_SIZE_M } from '../rules/equipment.ts'
+import type { SizeAxis } from '../rules/equipment.ts'
 
 export const COURSE_VERSION = 1 as const
 
@@ -19,6 +20,12 @@ export interface Obstacle {
   rotationDeg: number
   number: number | null
   signOffset: PlanPoint
+  /** Пролёт арки и ворот, диаметр бочки и туннеля. */
+  width: number
+  /** Высота бочки и ворот, длина туннеля. У арки не используется. */
+  depth: number
+  /** Полуарка. У остальных снарядов всегда false. */
+  half: boolean
 }
 
 export interface HandlerZone {
@@ -65,7 +72,13 @@ export function clampZoneCenter(value: number, size: number): number {
   return snap(clamp(value, margin, Math.max(margin, size - margin)))
 }
 
+export function normalizeDegrees(value: number): number {
+  const full = ((value % 360) + 360) % 360
+  return full === 360 ? 0 : full
+}
+
 export function createObstacle(type: ObstacleType, x: number, y: number, number: number | null): Obstacle {
+  const size = defaultObstacleSize(type)
   return {
     id: crypto.randomUUID(),
     type,
@@ -73,7 +86,10 @@ export function createObstacle(type: ObstacleType, x: number, y: number, number:
     y,
     rotationDeg: 0,
     number,
-    signOffset: { x: 0, y: 1.4 },
+    signOffset: { x: -1.35, y: 0 },
+    width: size.width,
+    depth: size.depth,
+    half: false,
   }
 }
 
@@ -143,17 +159,46 @@ function parseZone(raw: unknown): HandlerZone {
 function parseObstacle(raw: unknown): Obstacle {
   if (!isRecord(raw)) throw new Error('Снаряд в файле повреждён')
   if (typeof raw.id !== 'string' || raw.id.length === 0) throw new Error('У снаряда нет идентификатора')
+  const type = parseEnum(raw.type, OBSTACLE_TYPES, 'Неизвестный тип снаряда')
   const number = parseNumber(raw.number)
   const signOffset = parsePoint(raw.signOffset, 'Сдвиг таблички')
+  const legacy = !Object.hasOwn(raw, 'width') && !Object.hasOwn(raw, 'depth') && !Object.hasOwn(raw, 'half')
+  const defaults = defaultObstacleSize(type)
+  const width = legacy ? defaults.width : parseAxis(raw.width, SIZE_LIMITS[type].width, SIZE_LABEL[type].width)
+  const depth = legacy ? defaults.depth : parseAxis(raw.depth, SIZE_LIMITS[type].depth, SIZE_LABEL[type].depth ?? 'Второй размер')
+  const half = legacy ? false : parseHalf(raw.half, type)
+  let rotationDeg = parseFinite(raw.rotationDeg, 'Поворот снаряда')
+  if (legacy && type === 'tunnel') rotationDeg = normalizeDegrees(rotationDeg + 90)
   return {
     id: raw.id,
-    type: parseEnum(raw.type, OBSTACLE_TYPES, 'Неизвестный тип снаряда'),
+    type,
     x: parseFinite(raw.x, 'Координата снаряда'),
     y: parseFinite(raw.y, 'Координата снаряда'),
-    rotationDeg: parseFinite(raw.rotationDeg, 'Поворот снаряда'),
+    rotationDeg,
     number,
     signOffset,
+    width,
+    depth,
+    half,
   }
+}
+
+function parseHalf(raw: unknown, type: ObstacleType): boolean {
+  if (typeof raw !== 'boolean') throw new Error('Не указано, полуарка ли это')
+  if (raw && type !== 'arch') throw new Error('Полуарка бывает только у арки')
+  return raw
+}
+
+function parseAxis(raw: unknown, axis: SizeAxis, label: string): number {
+  const value = parseFinite(raw, label)
+  if (value < axis.min - 0.001 || value > axis.max + 0.001) {
+    throw new Error(`${label}: нужно от ${formatLimit(axis.min)} до ${formatLimit(axis.max)} м`)
+  }
+  return value
+}
+
+function formatLimit(value: number): string {
+  return value.toLocaleString('ru-RU', { maximumFractionDigits: 2 })
 }
 
 function parseNumber(raw: unknown): number | null {

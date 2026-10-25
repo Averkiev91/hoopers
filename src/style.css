@@ -8,6 +8,8 @@
 
 * { box-sizing: border-box; }
 
+[hidden] { display: none !important; }
+
 html, body, #app {
   margin: 0;
   height: 100%;
@@ -120,6 +122,12 @@ button.is-active {
   display: grid;
   gap: 8px;
   margin-top: 8px;
+}
+
+.rotate-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
 #selection-meta { margin-top: 4px; color: #3d4a40; }

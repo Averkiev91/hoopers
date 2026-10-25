@@ -1,9 +1,8 @@
 import * as THREE from 'three'
 import type { CourseDocument, Obstacle, ZoneShape } from '../model/course.ts'
-import type { Selection } from '../editor/types.ts'
-import { GRID_M, obstacleHeight } from '../rules/equipment.ts'
+import type { Selection, ViewMode } from '../editor/types.ts'
+import { GRID_M, obstacleReach } from '../rules/equipment.ts'
 import {
-  createNumberSprite,
   createObstacleMesh,
   createRotateHandle,
   createSignPlate,
@@ -15,7 +14,7 @@ import {
 
 const ROOT_NAME = 'course-root'
 
-export function syncCourseView(scene: THREE.Scene, course: CourseDocument, selected: Selection | null): void {
+export function syncCourseView(scene: THREE.Scene, course: CourseDocument, selected: Selection | null, view: ViewMode): void {
   const previous = scene.getObjectByName(ROOT_NAME)
   if (previous) {
     disposeOwned(previous)
@@ -34,7 +33,7 @@ export function syncCourseView(scene: THREE.Scene, course: CourseDocument, selec
   }
   for (const obstacle of course.obstacles) {
     const selectedObstacle = selected?.kind === 'obstacle' && selected.id === obstacle.id
-    root.add(createObstacleObject(obstacle, selectedObstacle))
+    root.add(createObstacleObject(obstacle, selectedObstacle, view))
   }
   scene.add(root)
 }
@@ -173,8 +172,8 @@ function pathSegment(from: Obstacle, to: Obstacle, last: boolean): THREE.Group {
   return group
 }
 
-function createObstacleObject(obstacle: Obstacle, selected: boolean): THREE.Group {
-  const group = createObstacleMesh(obstacle.type)
+function createObstacleObject(obstacle: Obstacle, selected: boolean, view: ViewMode): THREE.Group {
+  const group = createObstacleMesh(obstacle, view)
   group.name = `obstacle:${obstacle.id}`
   group.position.set(obstacle.x, 0, obstacle.y)
   group.rotation.y = THREE.MathUtils.degToRad(obstacle.rotationDeg)
@@ -182,12 +181,8 @@ function createObstacleObject(obstacle: Obstacle, selected: boolean): THREE.Grou
 
   if (obstacle.number !== null) {
     const label = String(obstacle.number)
-    const sprite = createNumberSprite(label, obstacleHeight(obstacle.type))
-    sprite.userData.kind = 'obstacle'
-    sprite.userData.id = obstacle.id
-    group.add(sprite)
-    const plate = createSignPlate(label)
-    plate.position.set(obstacle.signOffset.x, 0.04, obstacle.signOffset.y)
+    const plate = createSignPlate(label, view)
+    plate.position.set(obstacle.signOffset.x, 0.05, obstacle.signOffset.y)
     plate.userData.kind = 'sign'
     plate.userData.id = obstacle.id
     group.add(plate)
@@ -205,15 +200,16 @@ function createObstacleObject(obstacle: Obstacle, selected: boolean): THREE.Grou
   }
 
   if (selected) {
-    const ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.68, 32), selectionMaterialShared)
+    const reach = obstacleReach(obstacle.type, obstacle.width, obstacle.depth, obstacle.half)
+    const ring = new THREE.Mesh(new THREE.RingGeometry(reach + 0.08, reach + 0.16, 40), selectionMaterialShared)
     ring.rotation.x = -Math.PI / 2
-    ring.position.y = 0.05
+    ring.position.y = 0.045
     ring.userData.disposeGeometry = true
     ignoreRaycast(ring)
     group.add(ring)
 
     const handle = createRotateHandle()
-    handle.position.set(1.05, 0.16, 0)
+    handle.position.set(reach + 0.46, 0.08, 0)
     handle.userData.kind = 'rotate'
     handle.userData.id = obstacle.id
     group.add(handle)

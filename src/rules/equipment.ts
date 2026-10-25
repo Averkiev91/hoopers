@@ -41,6 +41,58 @@ export const EQUIPMENT = {
   },
 } as const
 
+export interface SizeAxis {
+  min: number
+  max: number
+  default: number
+}
+
+/** Пределы редактора. Это не пороги предупреждений класса. */
+export const SIZE_LIMITS: Record<ObstacleType, { width: SizeAxis; depth: SizeAxis }> = {
+  arch: {
+    width: { min: 0.5, max: 1.6, default: 0.8 },
+    depth: { min: 0, max: 0, default: 0 },
+  },
+  barrel: {
+    width: { min: 0.45, max: 0.8, default: 0.6 },
+    depth: { min: 0.5, max: 1.1, default: 0.8 },
+  },
+  gate: {
+    width: { min: 0.8, max: 1.8, default: 1.15 },
+    depth: { min: 0.7, max: 1.2, default: 0.9 },
+  },
+  tunnel: {
+    width: { min: 0.6, max: 1, default: 0.8 },
+    depth: { min: 0.6, max: 2.5, default: 1 },
+  },
+}
+
+export const SIZE_LABEL: Record<ObstacleType, { width: string; depth: string | null }> = {
+  arch: { width: 'Пролёт', depth: null },
+  barrel: { width: 'Диаметр', depth: 'Высота' },
+  gate: { width: 'Ширина', depth: 'Высота' },
+  tunnel: { width: 'Диаметр', depth: 'Длина' },
+}
+
+export function defaultObstacleSize(type: ObstacleType): { width: number; depth: number } {
+  const limits = SIZE_LIMITS[type]
+  return { width: limits.width.default, depth: limits.depth.default }
+}
+
+/** Радиус круга выделения вокруг снаряда, метры. */
+export function obstacleReach(type: ObstacleType, width: number, depth: number, half: boolean): number {
+  switch (type) {
+    case 'arch':
+      return (half ? width * 0.62 : width / 2) + 0.16
+    case 'barrel':
+      return width / 2 + 0.04
+    case 'gate':
+      return width / 2 + 0.1
+    case 'tunnel':
+      return Math.hypot(width / 2, depth / 2) + 0.06
+  }
+}
+
 export const KIT_LIMITS: Record<ObstacleType, number> = {
   arch: 12,
   barrel: 6,
@@ -69,15 +121,3 @@ export const CLASS_LIMITS = {
   H3: { minCount: 20, maxCount: 25, spacingMin: 6, spacingMax: 12, maxReach: 30 },
 } as const satisfies Record<string, ClassLimit>
 
-export function obstacleHeight(type: ObstacleType): number {
-  switch (type) {
-    case 'arch':
-      return EQUIPMENT.arch.clearHeight
-    case 'barrel':
-      return EQUIPMENT.barrel.height
-    case 'gate':
-      return EQUIPMENT.gate.height
-    case 'tunnel':
-      return EQUIPMENT.tunnel.diameter
-  }
-}

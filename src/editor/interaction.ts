@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { clamp, clampToRing, clampZoneCenter, createObstacle, nextNumber, snap } from '../model/course.ts'
+import { clamp, clampToRing, clampZoneCenter, createObstacle, nextNumber, normalizeDegrees, snap } from '../model/course.ts'
 import type { Store } from '../state/store.ts'
 import type { Viewport } from '../scene/viewport.ts'
 import type { Selection, Tool } from './types.ts'
@@ -255,7 +255,3 @@ export function bindEditor(bindings: EditorBindings): void {
   }
 }
 
-function normalizeDegrees(value: number): number {
-  const full = ((value % 360) + 360) % 360
-  return full === 360 ? 0 : full
-}

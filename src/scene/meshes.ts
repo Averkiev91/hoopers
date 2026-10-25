@@ -1,15 +1,23 @@
 import * as THREE from 'three'
-import type { ObstacleType } from '../model/course.ts'
+import type { Obstacle } from '../model/course.ts'
+import type { ViewMode } from '../editor/types.ts'
 import { EQUIPMENT } from '../rules/equipment.ts'
 
-const archMaterial = new THREE.MeshStandardMaterial({ color: '#c0392b', roughness: 0.55, metalness: 0.05 })
-const archMarkMaterial = new THREE.MeshBasicMaterial({ color: '#e74c3c', side: THREE.DoubleSide })
-const barrelMaterial = new THREE.MeshStandardMaterial({ color: '#a04020', roughness: 0.72 })
-const barrelBandMaterial = new THREE.MeshStandardMaterial({ color: '#f0d78c', roughness: 0.6 })
-const gateMaterial = new THREE.MeshStandardMaterial({ color: '#7b241c', roughness: 0.62 })
-const gateMarkMaterial = new THREE.MeshBasicMaterial({ color: '#922b21', side: THREE.DoubleSide })
-const tunnelMaterial = new THREE.MeshStandardMaterial({ color: '#1a5276', roughness: 0.45, side: THREE.DoubleSide })
-const tunnelMarkMaterial = new THREE.MeshBasicMaterial({ color: '#1f618d', side: THREE.DoubleSide, transparent: true, opacity: 0.85 })
+const archMaterial = new THREE.MeshStandardMaterial({ color: '#c0392b', roughness: 0.45, metalness: 0.08 })
+const barrelMaterial = new THREE.MeshStandardMaterial({ color: '#a04020', roughness: 0.62 })
+const barrelBandMaterial = new THREE.MeshStandardMaterial({ color: '#f0d78c', roughness: 0.45, metalness: 0.12 })
+const barrelCapMaterial = new THREE.MeshStandardMaterial({ color: '#7b3418', roughness: 0.7 })
+const gateMaterial = new THREE.MeshStandardMaterial({ color: '#7b241c', roughness: 0.55 })
+const tunnelMaterial = new THREE.MeshStandardMaterial({ color: '#1a5276', roughness: 0.42, metalness: 0.06 })
+const tunnelRimMaterial = new THREE.MeshStandardMaterial({ color: '#154360', roughness: 0.35, metalness: 0.12 })
+
+const archPlanMaterial = planMaterial('#c0392b')
+const barrelPlanMaterial = planMaterial('#a04020')
+const barrelPlanFill = planMaterial('#c56a3a')
+const gatePlanMaterial = planMaterial('#7b241c')
+const tunnelPlanMaterial = planMaterial('#1a5276')
+const tunnelHoleMaterial = planMaterial('#d4e6f1')
+
 const zoneMaterial = new THREE.MeshBasicMaterial({
   color: '#f4d03f',
   transparent: true,
@@ -23,137 +31,239 @@ const zoneLineMaterial = new THREE.LineBasicMaterial({ color: '#9a7b12' })
 const selectionMaterial = new THREE.MeshBasicMaterial({ color: '#f7dc6f', side: THREE.DoubleSide })
 const pathMaterial = new THREE.MeshStandardMaterial({ color: '#f7f1d0', roughness: 0.4 })
 const signLinkMaterial = new THREE.LineBasicMaterial({ color: '#f7f1d0' })
-const handleMaterial = new THREE.MeshStandardMaterial({ color: '#f4d03f', roughness: 0.4 })
+const handleMaterial = new THREE.MeshBasicMaterial({ color: '#f4d03f' })
+const pickMaterial = new THREE.MeshBasicMaterial({
+  transparent: true,
+  opacity: 0,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+})
 
 const textureCache = new Map<string, THREE.CanvasTexture>()
+const PLAN_Y = 0.055
 
-function createArch(): THREE.Group {
+export function createObstacleMesh(obstacle: Obstacle, view: ViewMode): THREE.Group {
+  const group = view === 'top' ? createPlan(obstacle) : createVolume(obstacle)
+  group.add(pickTarget(obstacle))
+  return group
+}
+
+function pickTarget(obstacle: Obstacle): THREE.Mesh {
+  const radius = obstacle.type === 'tunnel'
+    ? Math.max(obstacle.width, obstacle.depth) * 0.55
+    : obstacle.type === 'gate'
+      ? Math.max(obstacle.width * 0.55, 0.5)
+      : obstacle.width * 0.62
+  const mesh = new THREE.Mesh(new THREE.CircleGeometry(radius, 20), pickMaterial)
+  mesh.rotation.x = -Math.PI / 2
+  mesh.position.y = 0.03
+  mesh.userData.disposeGeometry = true
+  return mesh
+}
+
+function createPlan(obstacle: Obstacle): THREE.Group {
+  switch (obstacle.type) {
+    case 'arch':
+      return archPlan(obstacle.width, obstacle.half)
+    case 'barrel':
+      return barrelPlan(obstacle.width)
+    case 'gate':
+      return gatePlan(obstacle.width)
+    case 'tunnel':
+      return tunnelPlan(obstacle.width, obstacle.depth)
+  }
+}
+
+function createVolume(obstacle: Obstacle): THREE.Group {
+  switch (obstacle.type) {
+    case 'arch':
+      return archVolume(obstacle.width, obstacle.half)
+    case 'barrel':
+      return barrelVolume(obstacle.width, obstacle.depth)
+    case 'gate':
+      return gateVolume(obstacle.width, obstacle.depth)
+    case 'tunnel':
+      return tunnelVolume(obstacle.width, obstacle.depth)
+  }
+}
+
+function archPlan(width: number, half: boolean): THREE.Group {
   const group = new THREE.Group()
-  const radius = EQUIPMENT.arch.clearWidth / 2
-  const leg = EQUIPMENT.arch.clearHeight - radius
-  const tube = EQUIPMENT.arch.tubeRadius
+  group.add(ribbon(archPoints(width, half), 0.08, archPlanMaterial))
+  return group
+}
 
-  const hoop = solid(new THREE.TorusGeometry(radius, tube, 10, 28, Math.PI), archMaterial)
+function archPoints(width: number, half: boolean): Array<[number, number]> {
+  const radius = width / 2
+  const mouth = radius * 0.75
+  if (half) {
+    return [[-radius, mouth], ...arcPoints(radius, Math.PI, Math.PI * 1.5, 10)]
+  }
+  return [[-radius, mouth], ...arcPoints(radius, Math.PI, Math.PI * 2, 16), [radius, mouth]]
+}
+
+function barrelPlan(diameter: number): THREE.Group {
+  const group = new THREE.Group()
+  const radius = diameter / 2
+  group.add(layFlat(new THREE.CircleGeometry(radius * 0.9, 40), barrelPlanFill))
+  group.add(layFlat(new THREE.RingGeometry(radius * 0.72, radius, 40), barrelPlanMaterial, PLAN_Y + 0.008))
+  return group
+}
+
+function gatePlan(width: number): THREE.Group {
+  const group = new THREE.Group()
+  const post = 0.14
+  const bar = flatBox(width, 0.1, gatePlanMaterial)
+  group.add(bar)
+  for (const side of [-1, 1]) {
+    const upright = flatBox(post, 0.42, gatePlanMaterial)
+    upright.position.set(side * (width / 2 - post / 2), PLAN_Y + 0.012, 0)
+    group.add(upright)
+  }
+  return group
+}
+
+function tunnelPlan(width: number, length: number): THREE.Group {
+  const group = new THREE.Group()
+  group.add(shapeOnGround(roundedRect(width / 2, length / 2), tunnelPlanMaterial, PLAN_Y))
+  const inset = 0.07
+  const innerWidth = Math.max(width - inset * 2, 0.08)
+  const innerLength = Math.max(length - inset * 2, 0.08)
+  group.add(shapeOnGround(roundedRect(innerWidth / 2, innerLength / 2), tunnelHoleMaterial, PLAN_Y + 0.01))
+  return group
+}
+
+function archVolume(width: number, half: boolean): THREE.Group {
+  const group = new THREE.Group()
+  const radius = width / 2
+  const tube = EQUIPMENT.arch.tubeRadius
+  const leg = Math.max(0.18, width * 0.45)
+  if (half) {
+    const hoop = solid(new THREE.TorusGeometry(radius, tube, 16, 28, Math.PI / 2), archMaterial)
+    hoop.rotation.z = Math.PI / 2
+    hoop.position.y = leg
+    group.add(hoop)
+    addPost(group, -radius, leg, tube, EQUIPMENT.arch.footLength)
+    return group
+  }
+  const hoop = solid(new THREE.TorusGeometry(radius, tube, 16, 56, Math.PI), archMaterial)
   hoop.position.y = leg
   group.add(hoop)
-
-  for (const side of [-1, 1]) {
-    const post = solid(new THREE.CylinderGeometry(tube, tube, leg, 10), archMaterial)
-    post.position.set(side * radius, leg / 2, 0)
-    group.add(post)
-
-    const foot = solid(new THREE.BoxGeometry(tube * 3, tube, EQUIPMENT.arch.footLength), archMaterial)
-    foot.position.set(side * radius, tube / 2, 0)
-    group.add(foot)
-  }
-
-  const mark = flat(new THREE.RingGeometry(radius - 0.07, radius + 0.07, 40), archMarkMaterial)
-  group.add(mark)
+  for (const side of [-1, 1]) addPost(group, side * radius, leg, tube, EQUIPMENT.arch.footLength)
   return group
 }
 
-function createBarrel(): THREE.Group {
+function addPost(group: THREE.Group, x: number, height: number, tube: number, footLength: number): void {
+  const post = solid(new THREE.CylinderGeometry(tube, tube, height, 12), archMaterial)
+  post.position.set(x, height / 2, 0)
+  group.add(post)
+  const foot = solid(new THREE.BoxGeometry(tube * 3.2, tube, footLength), archMaterial)
+  foot.position.set(x, tube / 2, 0)
+  group.add(foot)
+}
+
+function barrelVolume(diameter: number, height: number): THREE.Group {
   const group = new THREE.Group()
-  const radius = EQUIPMENT.barrel.diameter / 2
-  const height = EQUIPMENT.barrel.height
-  const body = solid(new THREE.CylinderGeometry(radius, radius, height, 28), barrelMaterial)
+  const radius = diameter / 2
+  const body = solid(new THREE.CylinderGeometry(radius, radius * 1.05, height, 32), barrelMaterial)
   body.position.y = height / 2
   group.add(body)
-  const band = solid(new THREE.CylinderGeometry(radius + 0.012, radius + 0.012, height * 0.18, 28), barrelBandMaterial)
-  band.position.y = height * 0.62
-  group.add(band)
+  for (const fraction of [0.24, 0.78]) {
+    const band = solid(
+      new THREE.CylinderGeometry(radius * 1.05 + 0.012, radius * 1.05 + 0.012, Math.max(0.035, height * 0.08), 32),
+      barrelBandMaterial,
+    )
+    band.position.y = height * fraction
+    group.add(band)
+  }
+  const cap = solid(new THREE.CircleGeometry(radius * 0.9, 32), barrelCapMaterial)
+  cap.rotation.x = -Math.PI / 2
+  cap.position.y = height + 0.004
+  group.add(cap)
   return group
 }
 
-function createGate(): THREE.Group {
+function gateVolume(width: number, height: number): THREE.Group {
   const group = new THREE.Group()
-  const { width, height, post, footLength } = EQUIPMENT.gate
+  const post = EQUIPMENT.gate.post
   const half = width / 2 - post / 2
-
   for (const side of [-1, 1]) {
     const upright = solid(new THREE.BoxGeometry(post, height, post), gateMaterial)
     upright.position.set(side * half, height / 2, 0)
     group.add(upright)
-    const foot = solid(new THREE.BoxGeometry(post * 1.4, post, footLength), gateMaterial)
-    foot.position.set(side * half, post / 2, 0)
+    const foot = solid(new THREE.BoxGeometry(post * 1.8, post * 0.7, EQUIPMENT.gate.footLength), gateMaterial)
+    foot.position.set(side * half, post * 0.35, 0)
     group.add(foot)
   }
-
   const top = solid(new THREE.BoxGeometry(width, post, post), gateMaterial)
   top.position.y = height - post / 2
   group.add(top)
-
-  const bars = 5
+  const bars = Math.max(3, Math.round(width / 0.28))
+  const span = Math.max(width - post * 4, post)
   for (let index = 0; index < bars; index += 1) {
-    const bar = solid(new THREE.BoxGeometry(post * 0.55, height - post * 2, post * 0.55), gateMaterial)
-    const span = width - post * 3
-    bar.position.set(-span / 2 + (span / (bars - 1)) * index, height / 2, 0)
+    const bar = solid(new THREE.BoxGeometry(post * 0.5, Math.max(height - post * 2.4, post), post * 0.5), gateMaterial)
+    const x = bars === 1 ? 0 : -span / 2 + (span / (bars - 1)) * index
+    bar.position.set(x, height / 2, 0)
     group.add(bar)
   }
-
-  const mark = flat(new THREE.PlaneGeometry(width, 0.14), gateMarkMaterial)
-  group.add(mark)
   return group
 }
 
-function createTunnel(): THREE.Group {
+function tunnelVolume(diameter: number, length: number): THREE.Group {
   const group = new THREE.Group()
-  const radius = EQUIPMENT.tunnel.diameter / 2
-  const length = EQUIPMENT.tunnel.length
-  const shell = solid(new THREE.CylinderGeometry(radius, radius, length, 28, 1, true), tunnelMaterial)
-  shell.rotation.z = Math.PI / 2
-  shell.position.y = radius
+  const outer = diameter / 2
+  const wall = Math.min(0.04, outer * 0.16)
+  const inner = Math.max(outer - wall, outer * 0.72)
+  const shape = new THREE.Shape()
+  shape.absarc(0, 0, outer, 0, Math.PI * 2, false)
+  const hole = new THREE.Path()
+  hole.absarc(0, 0, inner, 0, Math.PI * 2, true)
+  shape.holes.push(hole)
+  const geometry = new THREE.ExtrudeGeometry(shape, { depth: length, bevelEnabled: false, curveSegments: 28 })
+  geometry.translate(0, 0, -length / 2)
+  const shell = solid(geometry, tunnelMaterial)
+  shell.position.y = outer
   group.add(shell)
-  const mark = flat(new THREE.PlaneGeometry(length, EQUIPMENT.tunnel.diameter), tunnelMarkMaterial)
-  group.add(mark)
+  const rimRadius = (outer + inner) / 2
+  const rimTube = Math.max((outer - inner) / 2, 0.012)
+  for (const end of [-1, 1]) {
+    const rim = solid(new THREE.TorusGeometry(rimRadius, rimTube, 10, 28), tunnelRimMaterial)
+    rim.position.set(0, outer, end * (length / 2 + rimTube * 0.35))
+    group.add(rim)
+  }
   return group
 }
 
-export function createObstacleMesh(type: ObstacleType): THREE.Group {
-  switch (type) {
-    case 'arch':
-      return createArch()
-    case 'barrel':
-      return createBarrel()
-    case 'gate':
-      return createGate()
-    case 'tunnel':
-      return createTunnel()
-  }
-}
-
-export function createNumberSprite(label: string, height: number): THREE.Sprite {
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: numberTexture(label) }))
-  sprite.position.y = height + 0.35
-  sprite.scale.set(1.5, 1.5, 1)
-  sprite.userData.disposeMaterial = true
-  return sprite
-}
-
-export function createSignPlate(label: string): THREE.Mesh {
-  const side = new THREE.MeshBasicMaterial({ color: '#f7f4ec' })
-  const top = new THREE.MeshBasicMaterial({ map: numberTexture(label), color: '#ffffff' })
-  const plate = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.06, 0.85), [side, side, top, side, side, side])
+export function createSignPlate(label: string, view: ViewMode): THREE.Mesh {
+  const material = new THREE.MeshBasicMaterial({
+    map: numberTexture(label, view === 'top'),
+    side: view === 'top' ? THREE.BackSide : THREE.FrontSide,
+  })
+  const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.62), material)
+  plate.rotation.x = -Math.PI / 2
   plate.userData.disposeGeometry = true
   plate.userData.disposeMaterial = true
   return plate
 }
 
 export function createRotateHandle(): THREE.Mesh {
-  const handle = solid(new THREE.SphereGeometry(0.32, 16, 12), handleMaterial)
+  const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.06, 24), handleMaterial)
   handle.castShadow = false
+  handle.userData.disposeGeometry = true
   return handle
 }
 
 export const signLinkMaterialShared = signLinkMaterial
 export const selectionMaterialShared = selectionMaterial
 export const pathMaterialShared = pathMaterial
+
 export function zoneMaterials(selected: boolean): { fill: THREE.Material; line: THREE.Material } {
   return { fill: selected ? zoneSelectedMaterial : zoneMaterial, line: zoneLineMaterial }
 }
 
-function numberTexture(label: string): THREE.CanvasTexture {
-  const cached = textureCache.get(label)
+function numberTexture(label: string, flipX: boolean): THREE.CanvasTexture {
+  const key = flipX ? `${label}:flip` : label
+  const cached = textureCache.get(key)
   if (cached) return cached
   const canvas = document.createElement('canvas')
   canvas.width = 256
@@ -163,17 +273,22 @@ function numberTexture(label: string): THREE.CanvasTexture {
   context.fillStyle = '#f7f4ec'
   context.fillRect(0, 0, 256, 256)
   context.strokeStyle = '#1e2a22'
-  context.lineWidth = 16
-  context.strokeRect(8, 8, 240, 240)
+  context.lineWidth = 18
+  context.strokeRect(10, 10, 236, 236)
   context.fillStyle = '#1e2a22'
-  context.font = '700 148px Segoe UI, sans-serif'
+  context.font = '700 150px Segoe UI, sans-serif'
   context.textAlign = 'center'
   context.textBaseline = 'middle'
-  context.fillText(label, 128, 136)
+  context.fillText(label, 128, 138)
   const texture = new THREE.CanvasTexture(canvas)
   texture.colorSpace = THREE.SRGBColorSpace
   texture.anisotropy = 4
-  textureCache.set(label, texture)
+  if (flipX) {
+    texture.wrapS = THREE.RepeatWrapping
+    texture.repeat.x = -1
+    texture.offset.x = 1
+  }
+  textureCache.set(key, texture)
   return texture
 }
 
@@ -185,10 +300,89 @@ function solid(geometry: THREE.BufferGeometry, material: THREE.Material): THREE.
   return mesh
 }
 
-function flat(geometry: THREE.BufferGeometry, material: THREE.Material): THREE.Mesh {
+function planMaterial(color: string): THREE.MeshBasicMaterial {
+  return new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide })
+}
+
+function layFlat(geometry: THREE.BufferGeometry, material: THREE.Material, y = PLAN_Y): THREE.Mesh {
   const mesh = new THREE.Mesh(geometry, material)
   mesh.rotation.x = -Math.PI / 2
-  mesh.position.y = 0.03
+  mesh.position.y = y
   mesh.userData.disposeGeometry = true
   return mesh
+}
+
+function flatBox(width: number, depth: number, material: THREE.Material): THREE.Mesh {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, 0.02, depth), material)
+  mesh.position.y = PLAN_Y
+  mesh.userData.disposeGeometry = true
+  return mesh
+}
+
+function shapeOnGround(shape: THREE.Shape, material: THREE.Material, y: number): THREE.Mesh {
+  const geometry = new THREE.ShapeGeometry(shape, 16)
+  geometry.rotateX(-Math.PI / 2)
+  geometry.rotateY(Math.PI)
+  const mesh = new THREE.Mesh(geometry, material)
+  mesh.position.y = y
+  mesh.userData.disposeGeometry = true
+  return mesh
+}
+
+function roundedRect(halfX: number, halfY: number): THREE.Shape {
+  const radius = Math.min(halfX, halfY) * 0.98
+  const shape = new THREE.Shape()
+  shape.moveTo(-halfX + radius, -halfY)
+  shape.lineTo(halfX - radius, -halfY)
+  shape.absarc(halfX - radius, -halfY + radius, radius, -Math.PI / 2, 0, false)
+  shape.lineTo(halfX, halfY - radius)
+  shape.absarc(halfX - radius, halfY - radius, radius, 0, Math.PI / 2, false)
+  shape.lineTo(-halfX + radius, halfY)
+  shape.absarc(-halfX + radius, halfY - radius, radius, Math.PI / 2, Math.PI, false)
+  shape.lineTo(-halfX, -halfY + radius)
+  shape.absarc(-halfX + radius, -halfY + radius, radius, Math.PI, Math.PI * 1.5, false)
+  return shape
+}
+
+function arcPoints(radius: number, from: number, to: number, steps: number): Array<[number, number]> {
+  const points: Array<[number, number]> = []
+  for (let index = 0; index <= steps; index += 1) {
+    const angle = from + ((to - from) * index) / steps
+    points.push([Math.cos(angle) * radius, Math.sin(angle) * radius])
+  }
+  return points
+}
+
+function ribbon(points: Array<[number, number]>, width: number, material: THREE.Material): THREE.Mesh {
+  const positions: number[] = []
+  const half = width / 2
+  const dirs = points.map((_, index) => {
+    const prev = points[Math.max(0, index - 1)]
+    const next = points[Math.min(points.length - 1, index + 1)]
+    const dx = next[0] - prev[0]
+    const dz = next[1] - prev[1]
+    const length = Math.hypot(dx, dz) || 1
+    return [-dz / length, dx / length]
+  })
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const a = points[index]
+    const b = points[index + 1]
+    const pa = dirs[index]
+    const pb = dirs[index + 1]
+    const leftA: [number, number] = [a[0] + pa[0] * half, a[1] + pa[1] * half]
+    const rightA: [number, number] = [a[0] - pa[0] * half, a[1] - pa[1] * half]
+    const leftB: [number, number] = [b[0] + pb[0] * half, b[1] + pb[1] * half]
+    const rightB: [number, number] = [b[0] - pb[0] * half, b[1] - pb[1] * half]
+    pushTriangle(positions, leftA, rightA, leftB)
+    pushTriangle(positions, rightA, rightB, leftB)
+  }
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  const mesh = new THREE.Mesh(geometry, material)
+  mesh.userData.disposeGeometry = true
+  return mesh
+}
+
+function pushTriangle(positions: number[], a: [number, number], b: [number, number], c: [number, number]): void {
+  positions.push(a[0], PLAN_Y, a[1], b[0], PLAN_Y, b[1], c[0], PLAN_Y, c[1])
 }

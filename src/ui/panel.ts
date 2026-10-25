@@ -1,6 +1,6 @@
-import type { ClassLevel, CourseDocument, ZoneShape } from '../model/course.ts'
+import type { ClassLevel, CourseDocument, Obstacle, ZoneShape } from '../model/course.ts'
 import type { CourseWarning } from '../rules/classChecks.ts'
-import { OBSTACLE_LABEL } from '../rules/equipment.ts'
+import { OBSTACLE_LABEL, SIZE_LABEL, SIZE_LIMITS } from '../rules/equipment.ts'
 import type { Selection, Tool, ViewMode } from '../editor/types.ts'
 
 export interface PanelHandlers {
@@ -9,6 +9,10 @@ export interface PanelHandlers {
   onTool(tool: Tool): void
   onZoneShape(shape: ZoneShape): void
   onNumber(number: number | null): void
+  onRotate(delta: number): void
+  onWidth(width: number): void
+  onDepth(depth: number): void
+  onHalf(half: boolean): void
   onShowPath(show: boolean): void
   onView(view: ViewMode): void
   onDelete(): void
@@ -52,7 +56,7 @@ export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(v
         <button type="button" data-tool="gate">Ворота</button>
         <button type="button" data-tool="tunnel">Туннель</button>
       </div>
-      <p class="hint">Щелчок по рингу ставит снаряд. Жёлтая ручка поворачивает на 15°.</p>
+      <p class="hint">Щелчок по рингу ставит снаряд. Жёлтый диск и кнопки поворачивают на 15°.</p>
     </section>
     <section>
       <h2>Зона управления</h2>
@@ -66,6 +70,13 @@ export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(v
       <p id="selection-meta"></p>
       <div id="number-fields">
         <label>Номер <input id="number" type="number" min="1" max="25" step="1"></label>
+        <div class="rotate-row">
+          <button type="button" id="rotate-left">−15°</button>
+          <button type="button" id="rotate-right">+15°</button>
+        </div>
+        <label id="span-label"><span id="span-caption">Пролёт, м</span><input id="span" type="number" step="0.1"></label>
+        <label id="depth-label"><span id="depth-caption">Высота, м</span><input id="obstacle-depth" type="number" step="0.1"></label>
+        <button type="button" id="half">Полуарка</button>
         <button type="button" id="clear-number">Убрать номер</button>
         <button type="button" id="delete">Удалить</button>
       </div>
@@ -96,6 +107,12 @@ export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(v
   const widthInput = requiredInput(host, '#width')
   const classSelect = requiredSelect(host, '#class')
   const numberInput = requiredInput(host, '#number')
+  const spanInput = requiredInput(host, '#span')
+  const depthInput = requiredInput(host, '#obstacle-depth')
+  const spanCaption = requiredElement(host, '#span-caption')
+  const depthCaption = requiredElement(host, '#depth-caption')
+  const depthLabel = requiredElement(host, '#depth-label')
+  const halfButton = requiredButton(host, '#half')
   const pathInput = host.querySelector<HTMLInputElement>('#path')
   const selectionBlock = host.querySelector<HTMLElement>('#selection')
   const selectionTitle = host.querySelector<HTMLElement>('#selection-title')
@@ -136,6 +153,11 @@ export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(v
     const value = Number(numberInput.value)
     if (Number.isInteger(value) && value >= 1 && value <= 25) handlers.onNumber(value)
   })
+  spanInput.addEventListener('change', () => handlers.onWidth(Number(spanInput.value)))
+  depthInput.addEventListener('change', () => handlers.onDepth(Number(depthInput.value)))
+  requiredButton(host, '#rotate-left').addEventListener('click', () => handlers.onRotate(-15))
+  requiredButton(host, '#rotate-right').addEventListener('click', () => handlers.onRotate(15))
+  halfButton.addEventListener('click', () => handlers.onHalf(halfButton.getAttribute('aria-pressed') !== 'true'))
   requiredButton(host, '#clear-number').addEventListener('click', () => handlers.onNumber(null))
   requiredButton(host, '#delete').addEventListener('click', () => handlers.onDelete())
   pathInput.addEventListener('change', () => handlers.onShowPath(pathInput.checked))
@@ -167,6 +189,26 @@ export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(v
     selectionTitle.textContent = OBSTACLE_LABEL[obstacle.type]
     selectionMeta.textContent = `${obstacle.x} м × ${obstacle.y} м, поворот ${obstacle.rotationDeg}°`
     setValue(numberInput, obstacle.number === null ? '' : String(obstacle.number))
+    syncSize(obstacle)
+  }
+
+  const syncSize = (obstacle: Obstacle): void => {
+    const labels = SIZE_LABEL[obstacle.type]
+    const limits = SIZE_LIMITS[obstacle.type]
+    spanCaption.textContent = `${labels.width}, м`
+    spanInput.min = String(limits.width.min)
+    spanInput.max = String(limits.width.max)
+    writeNumber(spanInput, obstacle.width)
+    depthLabel.hidden = labels.depth === null
+    if (labels.depth) {
+      depthCaption.textContent = `${labels.depth}, м`
+      depthInput.min = String(limits.depth.min)
+      depthInput.max = String(limits.depth.max)
+      writeNumber(depthInput, obstacle.depth)
+    }
+    halfButton.hidden = obstacle.type !== 'arch'
+    halfButton.classList.toggle('is-active', obstacle.half)
+    halfButton.setAttribute('aria-pressed', obstacle.half ? 'true' : 'false')
   }
 
   return {
@@ -209,9 +251,20 @@ function press(host: HTMLElement, key: string, value: string) {
   }
 }
 
+function writeNumber(input: HTMLInputElement, value: number) {
+  const text = String(value)
+  if (input.value !== text) input.value = text
+}
+
 function setValue(input: HTMLInputElement, value: string) {
   if (document.activeElement === input) return
   if (input.value !== value) input.value = value
+}
+
+function requiredElement(host: HTMLElement, selector: string): HTMLElement {
+  const element = host.querySelector<HTMLElement>(selector)
+  if (!element) throw new Error(`Не найден элемент ${selector}`)
+  return element
 }
 
 function requiredInput(host: HTMLElement, selector: string): HTMLInputElement {
