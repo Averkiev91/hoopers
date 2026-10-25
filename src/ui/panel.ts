@@ -1,19 +1,19 @@
 import type { ClassLevel, CourseDocument, Obstacle, ZoneShape } from '../model/course.ts'
 import type { CourseWarning } from '../rules/classChecks.ts'
 import { OBSTACLE_LABEL, SIZE_LABEL, SIZE_LIMITS } from '../rules/equipment.ts'
-import type { Selection, Tool, ViewMode } from '../editor/types.ts'
+import type { Placeable, Selection, Tool, ViewMode } from '../editor/types.ts'
 
 export interface PanelHandlers {
   onRing(lengthM: number, widthM: number): void
   onClass(level: ClassLevel): void
   onTool(tool: Tool): void
+  onPlace(kind: Placeable, clientX: number, clientY: number): void
   onZoneShape(shape: ZoneShape): void
-  onNumber(number: number | null): void
+  onNumber(number: number): void
   onRotate(delta: number): void
   onWidth(width: number): void
   onDepth(depth: number): void
   onHalf(half: boolean): void
-  onShowPath(show: boolean): void
   onView(view: ViewMode): void
   onDelete(): void
   onNew(): void
@@ -29,6 +29,8 @@ export interface PanelView {
   warnings: CourseWarning[]
   status: string
 }
+
+const PLACEABLES: readonly Placeable[] = ['arch', 'barrel', 'gate', 'tunnel', 'cone', 'sign']
 
 export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(view: PanelView): void } {
   host.innerHTML = `
@@ -51,12 +53,14 @@ export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(v
       <h2>Снаряд</h2>
       <div class="tools" role="toolbar">
         <button type="button" data-tool="select">Выбор</button>
-        <button type="button" data-tool="arch">Арка</button>
-        <button type="button" data-tool="barrel">Бочка</button>
-        <button type="button" data-tool="gate">Ворота</button>
-        <button type="button" data-tool="tunnel">Туннель</button>
+        <button type="button" data-place="arch">Арка</button>
+        <button type="button" data-place="barrel">Бочка</button>
+        <button type="button" data-place="gate">Ворота</button>
+        <button type="button" data-place="tunnel">Туннель</button>
+        <button type="button" data-place="cone">Конус</button>
+        <button type="button" data-place="sign">Номер</button>
       </div>
-      <p class="hint">Щелчок по рингу ставит снаряд. Жёлтый диск и кнопки поворачивают на 15°.</p>
+      <p class="hint">Перетащите снаряд или номер на ринг. Жёлтый диск и кнопки поворачивают на 15°.</p>
     </section>
     <section>
       <h2>Зона управления</h2>
@@ -68,8 +72,7 @@ export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(v
     <section id="selection" hidden>
       <h2 id="selection-title">Снаряд</h2>
       <p id="selection-meta"></p>
-      <div id="number-fields">
-        <label>Номер <input id="number" type="number" min="1" max="25" step="1"></label>
+      <div id="obstacle-fields">
         <div class="rotate-row">
           <button type="button" id="rotate-left">−15°</button>
           <button type="button" id="rotate-right">+15°</button>
@@ -77,12 +80,13 @@ export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(v
         <label id="span-label"><span id="span-caption">Пролёт, м</span><input id="span" type="number" step="0.1"></label>
         <label id="depth-label"><span id="depth-caption">Высота, м</span><input id="obstacle-depth" type="number" step="0.1"></label>
         <button type="button" id="half">Полуарка</button>
-        <button type="button" id="clear-number">Убрать номер</button>
-        <button type="button" id="delete">Удалить</button>
       </div>
+      <div id="sign-fields">
+        <label>Номер <input id="number" type="number" min="1" max="25" step="1"></label>
+      </div>
+      <button type="button" id="delete">Удалить</button>
     </section>
     <section>
-      <label class="check"><input id="path" type="checkbox"> Линия хода</label>
       <div class="segmented">
         <button type="button" data-view="top">Сверху</button>
         <button type="button" data-view="perspective">Объём</button>
@@ -113,17 +117,18 @@ export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(v
   const depthCaption = requiredElement(host, '#depth-caption')
   const depthLabel = requiredElement(host, '#depth-label')
   const halfButton = requiredButton(host, '#half')
-  const pathInput = host.querySelector<HTMLInputElement>('#path')
   const selectionBlock = host.querySelector<HTMLElement>('#selection')
   const selectionTitle = host.querySelector<HTMLElement>('#selection-title')
   const selectionMeta = host.querySelector<HTMLElement>('#selection-meta')
-  const numberFields = host.querySelector<HTMLElement>('#number-fields')
+  const obstacleFields = host.querySelector<HTMLElement>('#obstacle-fields')
+  const signFields = host.querySelector<HTMLElement>('#sign-fields')
+  const deleteButton = requiredButton(host, '#delete')
   const count = host.querySelector<HTMLElement>('#count')
   const warningList = host.querySelector<HTMLUListElement>('#warning-list')
   const ok = host.querySelector<HTMLElement>('#ok')
   const status = host.querySelector<HTMLElement>('#status')
   const fileInput = host.querySelector<HTMLInputElement>('#file')
-  if (!pathInput || !selectionBlock || !selectionTitle || !selectionMeta || !numberFields || !count || !warningList || !ok || !status || !fileInput) {
+  if (!selectionBlock || !selectionTitle || !selectionMeta || !obstacleFields || !signFields || !count || !warningList || !ok || !status || !fileInput) {
     throw new Error('Панель собрана не полностью')
   }
 
@@ -136,20 +141,16 @@ export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(v
   host.addEventListener('click', (event) => {
     const target = event.target
     if (!(target instanceof HTMLButtonElement)) return
-    const tool = target.dataset.tool
-    if (tool === 'select' || tool === 'arch' || tool === 'barrel' || tool === 'gate' || tool === 'tunnel') {
-      handlers.onTool(tool)
-    }
+    if (target.dataset.tool === 'select') handlers.onTool('select')
     const zone = target.dataset.zone
     if (zone === 'circle' || zone === 'square') handlers.onZoneShape(zone)
     const view = target.dataset.view
     if (view === 'top' || view === 'perspective') handlers.onView(view)
   })
+  for (const button of host.querySelectorAll<HTMLButtonElement>('[data-place]')) {
+    button.addEventListener('pointerdown', (event) => startPlace(button, event))
+  }
   numberInput.addEventListener('change', () => {
-    if (numberInput.value === '') {
-      handlers.onNumber(null)
-      return
-    }
     const value = Number(numberInput.value)
     if (Number.isInteger(value) && value >= 1 && value <= 25) handlers.onNumber(value)
   })
@@ -158,9 +159,7 @@ export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(v
   requiredButton(host, '#rotate-left').addEventListener('click', () => handlers.onRotate(-15))
   requiredButton(host, '#rotate-right').addEventListener('click', () => handlers.onRotate(15))
   halfButton.addEventListener('click', () => handlers.onHalf(halfButton.getAttribute('aria-pressed') !== 'true'))
-  requiredButton(host, '#clear-number').addEventListener('click', () => handlers.onNumber(null))
-  requiredButton(host, '#delete').addEventListener('click', () => handlers.onDelete())
-  pathInput.addEventListener('change', () => handlers.onShowPath(pathInput.checked))
+  deleteButton.addEventListener('click', () => handlers.onDelete())
   requiredButton(host, '#save').addEventListener('click', () => handlers.onSave())
   requiredButton(host, '#open').addEventListener('click', () => fileInput.click())
   requiredButton(host, '#new').addEventListener('click', () => handlers.onNew())
@@ -177,18 +176,34 @@ export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(v
     if (selected.kind === 'zone') {
       selectionTitle.textContent = 'Зона управления'
       selectionMeta.textContent = 'Перетащите жёлтую зону по рингу.'
-      numberFields.hidden = true
+      obstacleFields.hidden = true
+      signFields.hidden = true
+      deleteButton.hidden = true
+      return
+    }
+    deleteButton.hidden = false
+    if (selected.kind === 'sign') {
+      const sign = view.course.signs.find((item) => item.id === selected.id)
+      if (!sign) {
+        selectionBlock.hidden = true
+        return
+      }
+      selectionTitle.textContent = 'Номер'
+      selectionMeta.textContent = `${sign.x} м × ${sign.y} м`
+      obstacleFields.hidden = true
+      signFields.hidden = false
+      setValue(numberInput, String(sign.number))
       return
     }
     const obstacle = view.course.obstacles.find((item) => item.id === selected.id)
-    numberFields.hidden = false
     if (!obstacle) {
       selectionBlock.hidden = true
       return
     }
     selectionTitle.textContent = OBSTACLE_LABEL[obstacle.type]
     selectionMeta.textContent = `${obstacle.x} м × ${obstacle.y} м, поворот ${obstacle.rotationDeg}°`
-    setValue(numberInput, obstacle.number === null ? '' : String(obstacle.number))
+    obstacleFields.hidden = false
+    signFields.hidden = true
     syncSize(obstacle)
   }
 
@@ -219,8 +234,7 @@ export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(v
       press(host, 'tool', view.tool)
       press(host, 'zone', view.course.handlerZone.shape)
       press(host, 'view', view.view)
-      if (document.activeElement !== pathInput) pathInput.checked = view.course.showPath
-      count.textContent = `На трассе: ${view.course.obstacles.length}`
+      count.textContent = `Снарядов: ${view.course.obstacles.length}, номеров: ${view.course.signs.length}`
       syncSelection(view)
       warningList.replaceChildren(
         ...view.warnings.map((warning) => {
@@ -235,12 +249,50 @@ export function mountPanel(host: HTMLElement, handlers: PanelHandlers): { sync(v
     },
   }
 
+  function startPlace(button: HTMLButtonElement, event: PointerEvent) {
+    if (event.button !== 0) return
+    const place = button.dataset.place
+    if (!isPlaceable(place)) return
+    event.preventDefault()
+    const pointerId = event.pointerId
+    button.setPointerCapture(pointerId)
+    const ghost = document.createElement('div')
+    ghost.className = 'drag-ghost'
+    ghost.textContent = button.textContent ?? ''
+    document.body.append(ghost)
+    moveGhost(ghost, event)
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return
+      moveGhost(ghost, ev)
+    }
+    const end = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return
+      ghost.remove()
+      button.removeEventListener('pointermove', move)
+      button.removeEventListener('pointerup', end)
+      button.removeEventListener('pointercancel', end)
+      if (ev.type === 'pointerup') handlers.onPlace(place, ev.clientX, ev.clientY)
+    }
+    button.addEventListener('pointermove', move)
+    button.addEventListener('pointerup', end)
+    button.addEventListener('pointercancel', end)
+  }
+
   function commitRing() {
     const lengthM = Number(lengthInput.value)
     const widthM = Number(widthInput.value)
     if (!Number.isFinite(lengthM) || !Number.isFinite(widthM) || lengthM < 1 || widthM < 1) return
     handlers.onRing(lengthM, widthM)
   }
+}
+
+function isPlaceable(value: string | undefined): value is Placeable {
+  return PLACEABLES.some((item) => item === value)
+}
+
+function moveGhost(ghost: HTMLElement, event: PointerEvent) {
+  ghost.style.left = `${event.clientX + 12}px`
+  ghost.style.top = `${event.clientY + 12}px`
 }
 
 function press(host: HTMLElement, key: string, value: string) {

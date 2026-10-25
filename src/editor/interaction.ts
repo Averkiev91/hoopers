@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { clamp, clampToRing, clampZoneCenter, createObstacle, nextNumber, normalizeDegrees, snap } from '../model/course.ts'
+import { clampToRing, clampZoneCenter, normalizeDegrees } from '../model/course.ts'
 import type { Store } from '../state/store.ts'
 import type { Viewport } from '../scene/viewport.ts'
 import type { Selection, Tool } from './types.ts'
@@ -18,7 +18,7 @@ interface EditorBindings {
 
 type Drag =
   | { kind: 'obstacle'; id: string; offsetX: number; offsetY: number }
-  | { kind: 'sign'; id: string }
+  | { kind: 'sign'; id: string; offsetX: number; offsetY: number }
   | { kind: 'rotate'; id: string }
   | { kind: 'zone'; offsetX: number; offsetY: number }
 
@@ -68,8 +68,15 @@ export function bindEditor(bindings: EditorBindings): void {
       return
     }
     if (hit?.kind === 'sign' && hit.id && point) {
-      beginDrag(event, { kind: 'sign', id: hit.id })
-      select({ kind: 'obstacle', id: hit.id })
+      const sign = store.get().signs.find((item) => item.id === hit.id)
+      if (!sign) return
+      beginDrag(event, {
+        kind: 'sign',
+        id: hit.id,
+        offsetX: point.x - sign.x,
+        offsetY: point.z - sign.y,
+      })
+      select({ kind: 'sign', id: hit.id })
       render()
       return
     }
@@ -104,7 +111,7 @@ export function bindEditor(bindings: EditorBindings): void {
         target: viewport.controls.target.clone(),
       }
     }
-    armed = tool === 'select' ? 'clear' : 'place'
+    armed = 'clear'
     pointerId = event.pointerId
   }
 
@@ -127,7 +134,7 @@ export function bindEditor(bindings: EditorBindings): void {
     const point = groundPoint(event)
     if (!point) return
     if (drag.kind === 'obstacle') moveObstacle(drag, point)
-    else if (drag.kind === 'sign') moveSign(drag.id, point)
+    else if (drag.kind === 'sign') moveSign(drag, point)
     else if (drag.kind === 'rotate') rotateObstacle(drag.id, point)
     else moveZone(drag, point)
   }
@@ -154,14 +161,10 @@ export function bindEditor(bindings: EditorBindings): void {
       viewport.controls.update()
       cameraSnapshot = null
     }
-    const point = groundPoint(event)
-    if (!point) return
     if (wasArmed === 'clear') {
       select(null)
       render()
-      return
     }
-    placeAt(point)
   }
 
   function onWheel(event: WheelEvent) {
@@ -169,19 +172,6 @@ export function bindEditor(bindings: EditorBindings): void {
     event.preventDefault()
     event.stopImmediatePropagation()
     viewport.zoomTop(event.deltaY > 0 ? 0.92 : 1.08)
-  }
-
-  function placeAt(point: THREE.Vector3) {
-    const tool = getTool()
-    if (tool === 'select') return
-    const ring = store.get().ring
-    const x = clampToRing(point.x, ring.lengthM)
-    const y = clampToRing(point.z, ring.widthM)
-    store.update((course) => {
-      const obstacle = createObstacle(tool, x, y, nextNumber(course))
-      course.obstacles.push(obstacle)
-      select({ kind: 'obstacle', id: obstacle.id })
-    })
   }
 
   function moveObstacle(current: Extract<Drag, { kind: 'obstacle' }>, point: THREE.Vector3) {
@@ -196,19 +186,15 @@ export function bindEditor(bindings: EditorBindings): void {
     })
   }
 
-  function moveSign(id: string, point: THREE.Vector3) {
-    const group = viewport.scene.getObjectByName(`obstacle:${id}`)
-    if (!group) return
-    group.updateWorldMatrix(true, false)
-    const local = group.worldToLocal(point.clone())
-    const offset = {
-      x: snap(clamp(local.x, -8, 8)),
-      y: snap(clamp(local.z, -8, 8)),
-    }
+  function moveSign(current: Extract<Drag, { kind: 'sign' }>, point: THREE.Vector3) {
+    const ring = store.get().ring
+    const x = clampToRing(point.x - current.offsetX, ring.lengthM)
+    const y = clampToRing(point.z - current.offsetY, ring.widthM)
     store.update((course) => {
-      const obstacle = course.obstacles.find((item) => item.id === id)
-      if (!obstacle) return
-      obstacle.signOffset = offset
+      const sign = course.signs.find((item) => item.id === current.id)
+      if (!sign) return
+      sign.x = x
+      sign.y = y
     })
   }
 

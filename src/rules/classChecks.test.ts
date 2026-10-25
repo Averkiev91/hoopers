@@ -1,5 +1,5 @@
 /// <reference types="vitest/globals" />
-import { createDefaultCourse, createObstacle, type CourseDocument, type ObstacleType } from '../model/course.ts'
+import { createDefaultCourse, createObstacle, createSign, type CourseDocument, type ObstacleType } from '../model/course.ts'
 import { checkCourse } from './classChecks.ts'
 
 function courseWith(points: Array<{ x: number; y: number; type?: ObstacleType; number?: number | null }>, patch?: Partial<CourseDocument>): CourseDocument {
@@ -7,9 +7,11 @@ function courseWith(points: Array<{ x: number; y: number; type?: ObstacleType; n
   if (patch?.ring) course.ring = patch.ring
   if (patch?.classLevel) course.classLevel = patch.classLevel
   if (patch?.handlerZone) course.handlerZone = patch.handlerZone
-  course.obstacles = points.map((point, index) => {
-    const obstacle = createObstacle(point.type ?? 'arch', point.x, point.y, point.number === undefined ? index + 1 : point.number)
-    return obstacle
+  course.obstacles = points.map((point) => createObstacle(point.type ?? 'arch', point.x, point.y))
+  course.signs = points.flatMap((point, index) => {
+    const number = point.number === undefined ? index + 1 : point.number
+    if (number === null) return []
+    return [createSign(number, point.x, point.y)]
   })
   return course
 }
@@ -85,5 +87,27 @@ describe('checkCourse', () => {
 
     const kit = courseWith(Array.from({ length: 13 }, (_, index) => ({ x: 2 + index, y: 4, type: 'arch' as const })))
     expect(checkCourse(kit).some((warning) => warning.code === 'kit')).toBe(true)
+
+    const bare = courseWith([{ x: 4, y: 4, number: null }])
+    expect(checkCourse(bare).some((warning) => warning.code === 'missing-number')).toBe(true)
+  })
+
+  it('считает повторный проход одного снаряда и не включает конус в комплект', () => {
+    const repeated = courseWith([{ x: 10, y: 10, number: 1 }])
+    repeated.signs.push(createSign(2, 10.4, 10))
+    const repeatedCodes = checkCourse(repeated).map((warning) => warning.code)
+    expect(repeatedCodes).not.toContain('spacing')
+    expect(repeatedCodes).not.toContain('finish')
+
+    const cones = courseWith(Array.from({ length: 8 }, (_, index) => ({ x: 2 + index * 3, y: 4, type: 'cone' as const })))
+    const coneCodes = checkCourse(cones).map((warning) => warning.code)
+    expect(coneCodes).not.toContain('kit')
+    expect(coneCodes).toContain('arches')
+
+    const coneStart = courseWith([
+      { x: 4, y: 4, type: 'cone', number: 1 },
+      { x: 10, y: 4, type: 'arch', number: 2 },
+    ])
+    expect(checkCourse(coneStart).some((warning) => warning.code === 'start')).toBe(true)
   })
 })

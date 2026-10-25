@@ -65,6 +65,11 @@ export const SIZE_LIMITS: Record<ObstacleType, { width: SizeAxis; depth: SizeAxi
     width: { min: 0.6, max: 1, default: 0.8 },
     depth: { min: 0.6, max: 2.5, default: 1 },
   },
+  /** Конуса в правилах РКФ нет. Диаметр 20–30 см, высота в объёме равна диаметру. */
+  cone: {
+    width: { min: 0.2, max: 0.3, default: 0.25 },
+    depth: { min: 0.2, max: 0.3, default: 0.25 },
+  },
 }
 
 export const SIZE_LABEL: Record<ObstacleType, { width: string; depth: string | null }> = {
@@ -72,6 +77,7 @@ export const SIZE_LABEL: Record<ObstacleType, { width: string; depth: string | n
   barrel: { width: 'Диаметр', depth: 'Высота' },
   gate: { width: 'Ширина', depth: 'Высота' },
   tunnel: { width: 'Диаметр', depth: 'Длина' },
+  cone: { width: 'Диаметр', depth: null },
 }
 
 export function defaultObstacleSize(type: ObstacleType): { width: number; depth: number } {
@@ -90,21 +96,25 @@ export function obstacleReach(type: ObstacleType, width: number, depth: number, 
       return width / 2 + 0.1
     case 'tunnel':
       return Math.hypot(width / 2, depth / 2) + 0.06
+    case 'cone':
+      return width / 2 + 0.08
   }
 }
 
-export const KIT_LIMITS: Record<ObstacleType, number> = {
+/** Конус в комплект организатора не входит. */
+export const KIT_LIMITS = {
   arch: 12,
   barrel: 6,
   gate: 3,
   tunnel: 2,
-}
+} as const satisfies Partial<Record<ObstacleType, number>>
 
 export const OBSTACLE_LABEL: Record<ObstacleType, string> = {
   arch: 'Арка',
   barrel: 'Бочка',
   gate: 'Ворота',
   tunnel: 'Туннель',
+  cone: 'Конус',
 }
 
 export interface ClassLimit {

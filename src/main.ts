@@ -1,6 +1,6 @@
 import './style.css'
-import { clampToRing, clampZoneCenter, createDefaultCourse, normalizeDegrees } from './model/course.ts'
-import type { Obstacle } from './model/course.ts'
+import { clampToRing, clampZoneCenter, createDefaultCourse, createObstacle, createSign, nextNumber, normalizeDegrees } from './model/course.ts'
+import type { NumberSign, Obstacle } from './model/course.ts'
 import { SIZE_LIMITS } from './rules/equipment.ts'
 import type { SizeAxis } from './rules/equipment.ts'
 import { checkCourse } from './rules/classChecks.ts'
@@ -10,7 +10,7 @@ import { createViewport } from './scene/viewport.ts'
 import { syncCourseView } from './scene/courseView.ts'
 import { mountPanel } from './ui/panel.ts'
 import { bindEditor } from './editor/interaction.ts'
-import type { Selection, Tool, ViewMode } from './editor/types.ts'
+import type { Placeable, Selection, Tool, ViewMode } from './editor/types.ts'
 
 const panelHost = document.querySelector<HTMLElement>('#panel')
 const viewHost = document.querySelector<HTMLElement>('#viewport')
@@ -35,6 +35,10 @@ const panel = mountPanel(panelHost, {
         obstacle.x = clampToRing(obstacle.x, lengthM)
         obstacle.y = clampToRing(obstacle.y, widthM)
       }
+      for (const sign of course.signs) {
+        sign.x = clampToRing(sign.x, lengthM)
+        sign.y = clampToRing(sign.y, widthM)
+      }
       course.handlerZone.x = clampZoneCenter(course.handlerZone.x, lengthM)
       course.handlerZone.y = clampZoneCenter(course.handlerZone.y, widthM)
     })
@@ -49,6 +53,9 @@ const panel = mountPanel(panelHost, {
     tool = next
     render()
   },
+  onPlace(kind, clientX, clientY) {
+    placeFromPalette(kind, clientX, clientY)
+  },
   onZoneShape(shape) {
     status = ''
     store.update((course) => {
@@ -56,8 +63,8 @@ const panel = mountPanel(panelHost, {
     })
   },
   onNumber(number) {
-    updateSelected((obstacle) => {
-      obstacle.number = number
+    updateSelectedSign((sign) => {
+      sign.number = number
     })
   },
   onRotate(delta) {
@@ -70,6 +77,7 @@ const panel = mountPanel(panelHost, {
       const next = clampAxis(width, SIZE_LIMITS[obstacle.type].width)
       if (next === null) return
       obstacle.width = next
+      if (obstacle.type === 'cone') obstacle.depth = next
     })
   },
   onDepth(depth) {
@@ -83,11 +91,6 @@ const panel = mountPanel(panelHost, {
     updateSelected((obstacle) => {
       if (obstacle.type !== 'arch') return
       obstacle.half = half
-    })
-  },
-  onShowPath(show) {
-    store.update((course) => {
-      course.showPath = show
     })
   },
   onView(next) {
@@ -154,6 +157,10 @@ function render() {
     const id = selection.id
     if (!course.obstacles.some((obstacle) => obstacle.id === id)) selection = null
   }
+  if (selection?.kind === 'sign') {
+    const id = selection.id
+    if (!course.signs.some((sign) => sign.id === id)) selection = null
+  }
   syncCourseView(viewport.scene, course, selection, view)
   panel.sync({
     course,
@@ -164,6 +171,47 @@ function render() {
     status,
   })
   viewport.domElement.style.cursor = tool === 'select' ? 'default' : 'crosshair'
+}
+
+function placeFromPalette(kind: Placeable, clientX: number, clientY: number): void {
+  const point = viewport.pointOnGround(clientX, clientY)
+  if (!point) return
+  const ring = store.get().ring
+  if (point.x < 0 || point.z < 0 || point.x > ring.lengthM || point.z > ring.widthM) return
+  const x = clampToRing(point.x, ring.lengthM)
+  const y = clampToRing(point.z, ring.widthM)
+  if (kind === 'sign') {
+    const number = nextNumber(store.get())
+    if (number === null) {
+      status = 'Свободных номеров нет: знаки только от 1 до 25.'
+      render()
+      return
+    }
+    status = ''
+    store.update((course) => {
+      const sign = createSign(number, x, y)
+      course.signs.push(sign)
+      selection = { kind: 'sign', id: sign.id }
+    })
+    return
+  }
+  status = ''
+  store.update((course) => {
+    const obstacle = createObstacle(kind, x, y)
+    course.obstacles.push(obstacle)
+    selection = { kind: 'obstacle', id: obstacle.id }
+  })
+}
+
+function updateSelectedSign(change: (sign: NumberSign) => void): void {
+  if (selection?.kind !== 'sign') return
+  const id = selection.id
+  status = ''
+  store.update((course) => {
+    const sign = course.signs.find((item) => item.id === id)
+    if (!sign) return
+    change(sign)
+  })
 }
 
 function updateSelected(change: (obstacle: Obstacle) => void): void {
@@ -183,6 +231,14 @@ function clampAxis(value: number, axis: SizeAxis): number | null {
 }
 
 function removeSelected() {
+  if (selection?.kind === 'sign') {
+    const id = selection.id
+    selection = null
+    store.update((course) => {
+      course.signs = course.signs.filter((sign) => sign.id !== id)
+    })
+    return
+  }
   if (selection?.kind !== 'obstacle') return
   const id = selection.id
   selection = null

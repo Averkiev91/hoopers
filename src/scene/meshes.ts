@@ -10,6 +10,7 @@ const barrelCapMaterial = new THREE.MeshStandardMaterial({ color: '#7b3418', rou
 const gateMaterial = new THREE.MeshStandardMaterial({ color: '#7b241c', roughness: 0.55 })
 const tunnelMaterial = new THREE.MeshStandardMaterial({ color: '#1a5276', roughness: 0.42, metalness: 0.06 })
 const tunnelRimMaterial = new THREE.MeshStandardMaterial({ color: '#154360', roughness: 0.35, metalness: 0.12 })
+const coneMaterial = new THREE.MeshStandardMaterial({ color: '#e67e22', roughness: 0.5 })
 
 const archPlanMaterial = planMaterial('#c0392b')
 const barrelPlanMaterial = planMaterial('#a04020')
@@ -17,6 +18,8 @@ const barrelPlanFill = planMaterial('#c56a3a')
 const gatePlanMaterial = planMaterial('#7b241c')
 const tunnelPlanMaterial = planMaterial('#1a5276')
 const tunnelHoleMaterial = planMaterial('#d4e6f1')
+const conePlanMaterial = planMaterial('#e67e22')
+const conePlanDot = planMaterial('#6e2c00')
 
 const zoneMaterial = new THREE.MeshBasicMaterial({
   color: '#f4d03f',
@@ -29,8 +32,6 @@ const zoneSelectedMaterial = zoneMaterial.clone()
 zoneSelectedMaterial.opacity = 0.62
 const zoneLineMaterial = new THREE.LineBasicMaterial({ color: '#9a7b12' })
 const selectionMaterial = new THREE.MeshBasicMaterial({ color: '#f7dc6f', side: THREE.DoubleSide })
-const pathMaterial = new THREE.MeshStandardMaterial({ color: '#f7f1d0', roughness: 0.4 })
-const signLinkMaterial = new THREE.LineBasicMaterial({ color: '#f7f1d0' })
 const handleMaterial = new THREE.MeshBasicMaterial({ color: '#f4d03f' })
 const pickMaterial = new THREE.MeshBasicMaterial({
   transparent: true,
@@ -53,7 +54,9 @@ function pickTarget(obstacle: Obstacle): THREE.Mesh {
     ? Math.max(obstacle.width, obstacle.depth) * 0.55
     : obstacle.type === 'gate'
       ? Math.max(obstacle.width * 0.55, 0.5)
-      : obstacle.width * 0.62
+      : obstacle.type === 'cone'
+        ? Math.max(obstacle.width, 0.45)
+        : obstacle.width * 0.62
   const mesh = new THREE.Mesh(new THREE.CircleGeometry(radius, 20), pickMaterial)
   mesh.rotation.x = -Math.PI / 2
   mesh.position.y = 0.03
@@ -71,6 +74,8 @@ function createPlan(obstacle: Obstacle): THREE.Group {
       return gatePlan(obstacle.width)
     case 'tunnel':
       return tunnelPlan(obstacle.width, obstacle.depth)
+    case 'cone':
+      return conePlan(obstacle.width)
   }
 }
 
@@ -84,6 +89,8 @@ function createVolume(obstacle: Obstacle): THREE.Group {
       return gateVolume(obstacle.width, obstacle.depth)
     case 'tunnel':
       return tunnelVolume(obstacle.width, obstacle.depth)
+    case 'cone':
+      return coneVolume(obstacle.width)
   }
 }
 
@@ -120,6 +127,14 @@ function gatePlan(width: number): THREE.Group {
     upright.position.set(side * (width / 2 - post / 2), PLAN_Y + 0.012, 0)
     group.add(upright)
   }
+  return group
+}
+
+function conePlan(diameter: number): THREE.Group {
+  const group = new THREE.Group()
+  const radius = diameter / 2
+  group.add(layFlat(new THREE.CircleGeometry(radius, 28), conePlanMaterial))
+  group.add(layFlat(new THREE.CircleGeometry(Math.max(radius * 0.28, 0.025), 16), conePlanDot, PLAN_Y + 0.008))
   return group
 }
 
@@ -209,6 +224,14 @@ function gateVolume(width: number, height: number): THREE.Group {
   return group
 }
 
+function coneVolume(diameter: number): THREE.Group {
+  const group = new THREE.Group()
+  const cone = solid(new THREE.ConeGeometry(diameter / 2, diameter, 24), coneMaterial)
+  cone.position.y = diameter / 2
+  group.add(cone)
+  return group
+}
+
 function tunnelVolume(diameter: number, length: number): THREE.Group {
   const group = new THREE.Group()
   const outer = diameter / 2
@@ -235,15 +258,25 @@ function tunnelVolume(diameter: number, length: number): THREE.Group {
 }
 
 export function createSignPlate(label: string, view: ViewMode): THREE.Mesh {
+  const geometry = new THREE.PlaneGeometry(0.8, 0.62)
+  // Камера сверху считает «верх» осью +Z, а у лежащей плоскости верх текстуры смотрит в −Z.
+  if (view === 'top') flipUvY(geometry)
   const material = new THREE.MeshBasicMaterial({
-    map: numberTexture(label, view === 'top'),
-    side: view === 'top' ? THREE.BackSide : THREE.FrontSide,
+    map: numberTexture(label),
+    side: THREE.DoubleSide,
   })
-  const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.62), material)
+  const plate = new THREE.Mesh(geometry, material)
   plate.rotation.x = -Math.PI / 2
   plate.userData.disposeGeometry = true
   plate.userData.disposeMaterial = true
   return plate
+}
+
+function flipUvY(geometry: THREE.BufferGeometry): void {
+  const uv = geometry.getAttribute('uv')
+  for (let index = 0; index < uv.count; index += 1) {
+    uv.setY(index, 1 - uv.getY(index))
+  }
 }
 
 export function createRotateHandle(): THREE.Mesh {
@@ -253,17 +286,14 @@ export function createRotateHandle(): THREE.Mesh {
   return handle
 }
 
-export const signLinkMaterialShared = signLinkMaterial
 export const selectionMaterialShared = selectionMaterial
-export const pathMaterialShared = pathMaterial
 
 export function zoneMaterials(selected: boolean): { fill: THREE.Material; line: THREE.Material } {
   return { fill: selected ? zoneSelectedMaterial : zoneMaterial, line: zoneLineMaterial }
 }
 
-function numberTexture(label: string, flipX: boolean): THREE.CanvasTexture {
-  const key = flipX ? `${label}:flip` : label
-  const cached = textureCache.get(key)
+function numberTexture(label: string): THREE.CanvasTexture {
+  const cached = textureCache.get(label)
   if (cached) return cached
   const canvas = document.createElement('canvas')
   canvas.width = 256
@@ -283,12 +313,7 @@ function numberTexture(label: string, flipX: boolean): THREE.CanvasTexture {
   const texture = new THREE.CanvasTexture(canvas)
   texture.colorSpace = THREE.SRGBColorSpace
   texture.anisotropy = 4
-  if (flipX) {
-    texture.wrapS = THREE.RepeatWrapping
-    texture.repeat.x = -1
-    texture.offset.x = 1
-  }
-  textureCache.set(key, texture)
+  textureCache.set(label, texture)
   return texture
 }
 

@@ -1,16 +1,8 @@
 import * as THREE from 'three'
-import type { CourseDocument, Obstacle, ZoneShape } from '../model/course.ts'
+import type { CourseDocument, NumberSign, Obstacle, ZoneShape } from '../model/course.ts'
 import type { Selection, ViewMode } from '../editor/types.ts'
 import { GRID_M, obstacleReach } from '../rules/equipment.ts'
-import {
-  createObstacleMesh,
-  createRotateHandle,
-  createSignPlate,
-  pathMaterialShared,
-  selectionMaterialShared,
-  signLinkMaterialShared,
-  zoneMaterials,
-} from './meshes.ts'
+import { createObstacleMesh, createRotateHandle, createSignPlate, selectionMaterialShared, zoneMaterials } from './meshes.ts'
 
 const ROOT_NAME = 'course-root'
 
@@ -27,13 +19,13 @@ export function syncCourseView(scene: THREE.Scene, course: CourseDocument, selec
   root.add(createGrid(course))
   root.add(createBorder(course))
   root.add(createZone(course, selected?.kind === 'zone'))
-  if (course.showPath) {
-    const path = createPath(course)
-    if (path) root.add(path)
-  }
   for (const obstacle of course.obstacles) {
     const selectedObstacle = selected?.kind === 'obstacle' && selected.id === obstacle.id
     root.add(createObstacleObject(obstacle, selectedObstacle, view))
+  }
+  for (const sign of course.signs) {
+    const selectedSign = selected?.kind === 'sign' && selected.id === sign.id
+    root.add(createSignObject(sign, selectedSign, view))
   }
   scene.add(root)
 }
@@ -136,38 +128,21 @@ function zoneOutline(shape: ZoneShape): THREE.BufferGeometry {
   return new THREE.BufferGeometry().setFromPoints(points)
 }
 
-function createPath(course: CourseDocument): THREE.Group | null {
-  const ordered = course.obstacles
-    .filter((obstacle) => obstacle.number !== null)
-    .sort((a, b) => (a.number ?? 0) - (b.number ?? 0) || a.id.localeCompare(b.id))
-  if (ordered.length < 2) return null
-
+function createSignObject(sign: NumberSign, selected: boolean, view: ViewMode): THREE.Group {
   const group = new THREE.Group()
-  for (let index = 0; index < ordered.length - 1; index += 1) {
-    group.add(pathSegment(ordered[index], ordered[index + 1], index === ordered.length - 2))
-  }
-  ignoreRaycast(group)
-  return group
-}
-
-function pathSegment(from: Obstacle, to: Obstacle, last: boolean): THREE.Group {
-  const group = new THREE.Group()
-  const start = new THREE.Vector3(from.x, 0.06, from.y)
-  const end = new THREE.Vector3(to.x, 0.06, to.y)
-  const direction = end.clone().sub(start)
-  const length = direction.length()
-  if (length < 0.05) return group
-  const segment = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, length, 8), pathMaterialShared)
-  segment.position.copy(start).add(end).multiplyScalar(0.5)
-  segment.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize())
-  segment.userData.disposeGeometry = true
-  group.add(segment)
-  if (last) {
-    const head = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.32, 12), pathMaterialShared)
-    head.position.copy(end).addScaledVector(direction, -0.16)
-    head.quaternion.copy(segment.quaternion)
-    head.userData.disposeGeometry = true
-    group.add(head)
+  group.name = `sign:${sign.id}`
+  group.position.set(sign.x, 0, sign.y)
+  const plate = createSignPlate(String(sign.number), view)
+  plate.position.y = 0.08
+  group.add(plate)
+  tag(group, { kind: 'sign', id: sign.id })
+  if (selected) {
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.48, 0.58, 32), selectionMaterialShared)
+    ring.rotation.x = -Math.PI / 2
+    ring.position.y = 0.07
+    ring.userData.disposeGeometry = true
+    ignoreRaycast(ring)
+    group.add(ring)
   }
   return group
 }
@@ -178,26 +153,6 @@ function createObstacleObject(obstacle: Obstacle, selected: boolean, view: ViewM
   group.position.set(obstacle.x, 0, obstacle.y)
   group.rotation.y = THREE.MathUtils.degToRad(obstacle.rotationDeg)
   tag(group, { kind: 'obstacle', id: obstacle.id })
-
-  if (obstacle.number !== null) {
-    const label = String(obstacle.number)
-    const plate = createSignPlate(label, view)
-    plate.position.set(obstacle.signOffset.x, 0.05, obstacle.signOffset.y)
-    plate.userData.kind = 'sign'
-    plate.userData.id = obstacle.id
-    group.add(plate)
-
-    const link = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(0, 0.07, 0),
-        new THREE.Vector3(obstacle.signOffset.x, 0.07, obstacle.signOffset.y),
-      ]),
-      signLinkMaterialShared,
-    )
-    link.userData.disposeGeometry = true
-    ignoreRaycast(link)
-    group.add(link)
-  }
 
   if (selected) {
     const reach = obstacleReach(obstacle.type, obstacle.width, obstacle.depth, obstacle.half)

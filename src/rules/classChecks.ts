@@ -1,4 +1,4 @@
-import type { CourseDocument, Obstacle, ObstacleType } from '../model/course.ts'
+import type { CourseDocument, NumberSign, Obstacle, ObstacleType } from '../model/course.ts'
 import { CLASS_LIMITS, KIT_LIMITS, MIN_RING_AREA_M2, MIN_RING_SIDE_M, OBSTACLE_LABEL, ZONE_SIZE_M } from './equipment.ts'
 
 export interface CourseWarning {
@@ -46,13 +46,13 @@ export function checkCourse(course: CourseDocument): CourseWarning[] {
 
   warnings.push(...kitWarnings(course.obstacles))
   warnings.push(...placementWarnings(course))
-  warnings.push(...numberWarnings(course.obstacles, limits))
+  warnings.push(...numberWarnings(course, limits))
   return warnings
 }
 
 function kitWarnings(obstacles: Obstacle[]): CourseWarning[] {
   const warnings: CourseWarning[] = []
-  for (const type of Object.keys(KIT_LIMITS) as ObstacleType[]) {
+  for (const type of Object.keys(KIT_LIMITS) as Array<keyof typeof KIT_LIMITS>) {
     const count = obstacles.filter((obstacle) => obstacle.type === type).length
     const limit = KIT_LIMITS[type]
     if (count > limit) {
@@ -104,38 +104,31 @@ function placementWarnings(course: CourseDocument): CourseWarning[] {
   return warnings
 }
 
-function numberWarnings(obstacles: Obstacle[], limits: (typeof CLASS_LIMITS)[keyof typeof CLASS_LIMITS]): CourseWarning[] {
+function numberWarnings(course: CourseDocument, limits: (typeof CLASS_LIMITS)[keyof typeof CLASS_LIMITS]): CourseWarning[] {
   const warnings: CourseWarning[] = []
+  const { obstacles, signs } = course
   if (obstacles.length === 0) return warnings
 
-  if (obstacles.some((obstacle) => obstacle.number === null)) {
+  if (signs.length === 0) {
     warnings.push({
       code: 'missing-number',
-      message: 'Не у всех снарядов указан номер.',
-    })
-  }
-
-  const byNumber = new Map<number, Obstacle[]>()
-  for (const obstacle of obstacles) {
-    if (obstacle.number === null) continue
-    const group = byNumber.get(obstacle.number) ?? []
-    group.push(obstacle)
-    byNumber.set(obstacle.number, group)
-  }
-
-  if (byNumber.size === 0) {
-    warnings.push({
-      code: 'start',
-      message: 'Старт и финиш не обозначены номерами.',
+      message: 'Трасса не обозначена номерами.',
     })
     return warnings
+  }
+
+  const byNumber = new Map<number, NumberSign[]>()
+  for (const sign of signs) {
+    const group = byNumber.get(sign.number) ?? []
+    group.push(sign)
+    byNumber.set(sign.number, group)
   }
 
   for (const [number, group] of byNumber) {
     if (group.length > 1) {
       warnings.push({
         code: 'duplicate-number',
-        message: `Номер ${number} стоит на нескольких снарядах.`,
+        message: `Номер ${number} повторяется.`,
       })
     }
   }
@@ -150,35 +143,58 @@ function numberWarnings(obstacles: Obstacle[], limits: (typeof CLASS_LIMITS)[key
     }
   }
 
-  const start = byNumber.get(Math.min(...byNumber.keys()))?.[0]
-  const finish = byNumber.get(maxNumber)?.[0]
-  if (start && !START_TYPES.includes(start.type)) {
+  const startSign = byNumber.get(Math.min(...byNumber.keys()))?.[0]
+  const finishSign = byNumber.get(maxNumber)?.[0]
+  const startObstacle = startSign ? nearestObstacle(startSign, obstacles) : null
+  const finishObstacle = finishSign ? nearestObstacle(finishSign, obstacles) : null
+  if (startObstacle && !START_TYPES.includes(startObstacle.type)) {
     warnings.push({
       code: 'start',
-      message: `Старт (номер ${start.number}) должен быть аркой или туннелем.`,
+      message: `Старт (номер ${startSign?.number}) должен быть аркой или туннелем.`,
     })
   }
-  if (finish && finish !== start && !START_TYPES.includes(finish.type)) {
+  if (
+    finishSign &&
+    startSign &&
+    finishSign.id !== startSign.id &&
+    finishObstacle &&
+    !START_TYPES.includes(finishObstacle.type)
+  ) {
     warnings.push({
       code: 'finish',
-      message: `Финиш (номер ${finish.number}) должен быть аркой или туннелем.`,
+      message: `Финиш (номер ${finishSign.number}) должен быть аркой или туннелем.`,
     })
   }
 
-  for (const obstacle of obstacles) {
-    if (obstacle.number === null) continue
-    const nextGroup = byNumber.get(obstacle.number + 1)
-    if (!nextGroup || nextGroup.length !== 1 || (byNumber.get(obstacle.number)?.length ?? 0) !== 1) continue
-    const span = distance(obstacle, nextGroup[0])
+  for (const sign of signs) {
+    const nextGroup = byNumber.get(sign.number + 1)
+    if (!nextGroup || nextGroup.length !== 1 || (byNumber.get(sign.number)?.length ?? 0) !== 1) continue
+    const from = nearestObstacle(sign, obstacles)
+    const to = nearestObstacle(nextGroup[0], obstacles)
+    if (!from || !to || from.id === to.id) continue
+    const span = distance(from, to)
     if (span < limits.spacingMin - EPS || span > limits.spacingMax + EPS) {
       warnings.push({
         code: 'spacing',
-        message: `Между номерами ${obstacle.number} и ${obstacle.number + 1} ${formatMeters(span)} м, в этом классе нужно от ${limits.spacingMin} до ${limits.spacingMax} м.`,
+        message: `Между номерами ${sign.number} и ${sign.number + 1} ${formatMeters(span)} м, в этом классе нужно от ${limits.spacingMin} до ${limits.spacingMax} м.`,
       })
     }
   }
 
   return warnings
+}
+
+function nearestObstacle(sign: { x: number; y: number }, obstacles: Obstacle[]): Obstacle | null {
+  let best: Obstacle | null = null
+  let bestDistance = Infinity
+  for (const obstacle of obstacles) {
+    const span = distance(sign, obstacle)
+    if (span < bestDistance) {
+      best = obstacle
+      bestDistance = span
+    }
+  }
+  return best
 }
 
 function insideRing(course: CourseDocument, x: number, y: number): boolean {

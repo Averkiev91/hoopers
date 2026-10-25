@@ -73,12 +73,20 @@ label {
   font-size: 13px;
 }
 
-.check {
-  display: flex;
-  grid-template-columns: none;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
+.tools button[data-place] {
+  cursor: grab;
+  touch-action: none;
+}
+
+.drag-ghost {
+  position: fixed;
+  z-index: 20;
+  pointer-events: none;
+  padding: 6px 10px;
+  border: 1px solid #9d2c22;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 4px 12px rgb(30 42 34 / 16%);
 }
 
 input, select, button {
@@ -118,11 +126,14 @@ button.is-active {
   color: #fff;
 }
 
-#number-fields {
+#obstacle-fields,
+#sign-fields {
   display: grid;
   gap: 8px;
   margin-top: 8px;
 }
+
+#delete { margin-top: 8px; }
 
 .rotate-row {
   display: grid;

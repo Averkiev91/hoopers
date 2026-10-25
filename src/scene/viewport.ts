@@ -14,6 +14,7 @@ export interface Viewport {
   panTop(dx: number, dy: number): void
   zoomTop(factor: number): void
   ndc(event: { clientX: number; clientY: number }): THREE.Vector2
+  pointOnGround(clientX: number, clientY: number): THREE.Vector3 | null
   start(): void
 }
 
@@ -58,6 +59,9 @@ export function createViewport(host: HTMLElement): Viewport {
   const topTarget = new THREE.Vector3(15, 0, 10)
   let framed = false
   const pointer = new THREE.Vector2()
+  const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
+  const groundRay = new THREE.Raycaster()
+  const groundHit = new THREE.Vector3()
 
   const viewport: Viewport = {
     scene,
@@ -108,6 +112,13 @@ export function createViewport(host: HTMLElement): Viewport {
         -((event.clientY - rect.top) / rect.height) * 2 + 1,
       )
       return pointer
+    },
+    pointOnGround(clientX, clientY) {
+      const rect = renderer.domElement.getBoundingClientRect()
+      if (rect.width === 0 || rect.height === 0) return null
+      if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return null
+      groundRay.setFromCamera(viewport.ndc({ clientX, clientY }), view === 'top' ? topCamera : perspectiveCamera)
+      return groundRay.ray.intersectPlane(groundPlane, groundHit) ? groundHit.clone() : null
     },
     start() {
       renderer.setAnimationLoop(() => {

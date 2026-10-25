@@ -4,7 +4,7 @@ import type { SizeAxis } from '../rules/equipment.ts'
 export const COURSE_VERSION = 1 as const
 
 export type ClassLevel = 'H1' | 'H2' | 'H3'
-export type ObstacleType = 'arch' | 'barrel' | 'gate' | 'tunnel'
+export type ObstacleType = 'arch' | 'barrel' | 'gate' | 'tunnel' | 'cone'
 export type ZoneShape = 'circle' | 'square'
 
 export interface PlanPoint {
@@ -18,14 +18,19 @@ export interface Obstacle {
   x: number
   y: number
   rotationDeg: number
-  number: number | null
-  signOffset: PlanPoint
-  /** Пролёт арки и ворот, диаметр бочки и туннеля. */
+  /** Пролёт арки и ворот, диаметр бочки, туннеля и конуса. */
   width: number
-  /** Высота бочки и ворот, длина туннеля. У арки не используется. */
+  /** Высота бочки и ворот, длина туннеля. У арки не используется. У конуса равна диаметру. */
   depth: number
   /** Полуарка. У остальных снарядов всегда false. */
   half: boolean
+}
+
+export interface NumberSign {
+  id: string
+  number: number
+  x: number
+  y: number
 }
 
 export interface HandlerZone {
@@ -45,10 +50,10 @@ export interface CourseDocument {
   classLevel: ClassLevel
   handlerZone: HandlerZone
   obstacles: Obstacle[]
-  showPath: boolean
+  signs: NumberSign[]
 }
 
-const OBSTACLE_TYPES: readonly ObstacleType[] = ['arch', 'barrel', 'gate', 'tunnel']
+const OBSTACLE_TYPES: readonly ObstacleType[] = ['arch', 'barrel', 'gate', 'tunnel', 'cone']
 const CLASS_LEVELS: readonly ClassLevel[] = ['H1', 'H2', 'H3']
 const ZONE_SHAPES: readonly ZoneShape[] = ['circle', 'square']
 
@@ -77,7 +82,7 @@ export function normalizeDegrees(value: number): number {
   return full === 360 ? 0 : full
 }
 
-export function createObstacle(type: ObstacleType, x: number, y: number, number: number | null): Obstacle {
+export function createObstacle(type: ObstacleType, x: number, y: number): Obstacle {
   const size = defaultObstacleSize(type)
   return {
     id: crypto.randomUUID(),
@@ -85,16 +90,23 @@ export function createObstacle(type: ObstacleType, x: number, y: number, number:
     x,
     y,
     rotationDeg: 0,
-    number,
-    signOffset: { x: -1.35, y: 0 },
     width: size.width,
-    depth: size.depth,
+    depth: type === 'cone' ? size.width : size.depth,
     half: false,
   }
 }
 
+export function createSign(number: number, x: number, y: number): NumberSign {
+  return {
+    id: crypto.randomUUID(),
+    number,
+    x,
+    y,
+  }
+}
+
 export function nextNumber(course: CourseDocument): number | null {
-  const used = new Set(course.obstacles.map((obstacle) => obstacle.number))
+  const used = new Set(course.signs.map((sign) => sign.number))
   for (let number = NUMBER_MIN; number <= NUMBER_MAX; number += 1) {
     if (!used.has(number)) return number
   }
@@ -108,7 +120,7 @@ export function createDefaultCourse(): CourseDocument {
     classLevel: 'H1',
     handlerZone: { shape: 'circle', x: 15, y: 10 },
     obstacles: [],
-    showPath: true,
+    signs: [],
   }
 }
 
@@ -124,10 +136,15 @@ export function parseCourse(raw: unknown): CourseDocument {
   const classLevel = parseEnum(raw.classLevel, CLASS_LEVELS, 'Неизвестный класс')
   const handlerZone = parseZone(raw.handlerZone)
   if (!Array.isArray(raw.obstacles)) throw new Error('В чертеже нет списка снарядов')
-  const obstacles = raw.obstacles.map(parseObstacle)
+  const legacy = !Object.hasOwn(raw, 'signs')
+  if (!legacy && !Array.isArray(raw.signs)) throw new Error('В чертеже нет списка знаков')
+  const parsed = raw.obstacles.map((item) => parseObstacle(item, legacy))
+  const obstacles = parsed.map((item) => item.obstacle)
   const ids = new Set(obstacles.map((obstacle) => obstacle.id))
   if (ids.size !== obstacles.length) throw new Error('В чертеже повторяется идентификатор снаряда')
-  if (typeof raw.showPath !== 'boolean') throw new Error('Не указано, показывать ли линию хода')
+  const signs = legacy ? parsed.flatMap((item) => (item.sign ? [item.sign] : [])) : (raw.signs as unknown[]).map(parseSign)
+  const signIds = new Set(signs.map((sign) => sign.id))
+  if (signIds.size !== signs.length) throw new Error('В чертеже повторяется идентификатор знака')
 
   return {
     version: COURSE_VERSION,
@@ -135,7 +152,7 @@ export function parseCourse(raw: unknown): CourseDocument {
     classLevel,
     handlerZone,
     obstacles,
-    showPath: raw.showPath,
+    signs,
   }
 }
 
@@ -156,30 +173,70 @@ function parseZone(raw: unknown): HandlerZone {
   }
 }
 
-function parseObstacle(raw: unknown): Obstacle {
+function parseObstacle(raw: unknown, legacySigns: boolean): { obstacle: Obstacle; sign: NumberSign | null } {
   if (!isRecord(raw)) throw new Error('Снаряд в файле повреждён')
   if (typeof raw.id !== 'string' || raw.id.length === 0) throw new Error('У снаряда нет идентификатора')
   const type = parseEnum(raw.type, OBSTACLE_TYPES, 'Неизвестный тип снаряда')
-  const number = parseNumber(raw.number)
-  const signOffset = parsePoint(raw.signOffset, 'Сдвиг таблички')
-  const legacy = !Object.hasOwn(raw, 'width') && !Object.hasOwn(raw, 'depth') && !Object.hasOwn(raw, 'half')
+  const legacySize = !Object.hasOwn(raw, 'width') && !Object.hasOwn(raw, 'depth') && !Object.hasOwn(raw, 'half')
   const defaults = defaultObstacleSize(type)
-  const width = legacy ? defaults.width : parseAxis(raw.width, SIZE_LIMITS[type].width, SIZE_LABEL[type].width)
-  const depth = legacy ? defaults.depth : parseAxis(raw.depth, SIZE_LIMITS[type].depth, SIZE_LABEL[type].depth ?? 'Второй размер')
-  const half = legacy ? false : parseHalf(raw.half, type)
+  const width = legacySize ? defaults.width : parseAxis(raw.width, SIZE_LIMITS[type].width, SIZE_LABEL[type].width)
+  const depth = type === 'cone'
+    ? width
+    : legacySize
+      ? defaults.depth
+      : parseAxis(raw.depth, SIZE_LIMITS[type].depth, SIZE_LABEL[type].depth ?? 'Второй размер')
+  const half = legacySize ? false : parseHalf(raw.half, type)
   let rotationDeg = parseFinite(raw.rotationDeg, 'Поворот снаряда')
-  if (legacy && type === 'tunnel') rotationDeg = normalizeDegrees(rotationDeg + 90)
-  return {
+  if (legacySize && type === 'tunnel') rotationDeg = normalizeDegrees(rotationDeg + 90)
+  const x = parseFinite(raw.x, 'Координата снаряда')
+  const y = parseFinite(raw.y, 'Координата снаряда')
+  const obstacle: Obstacle = {
     id: raw.id,
     type,
-    x: parseFinite(raw.x, 'Координата снаряда'),
-    y: parseFinite(raw.y, 'Координата снаряда'),
+    x,
+    y,
     rotationDeg,
-    number,
-    signOffset,
     width,
     depth,
     half,
+  }
+  if (!legacySigns) return { obstacle, sign: null }
+  const number = parseNumber(raw.number)
+  const signOffset = parsePoint(raw.signOffset, 'Сдвиг таблички')
+  if (number === null) return { obstacle, sign: null }
+  const world = rotateOffset(x, y, rotationDeg, signOffset)
+  return {
+    obstacle,
+    sign: {
+      id: crypto.randomUUID(),
+      number,
+      x: world.x,
+      y: world.y,
+    },
+  }
+}
+
+function parseSign(raw: unknown): NumberSign {
+  if (!isRecord(raw)) throw new Error('Знак в файле повреждён')
+  if (typeof raw.id !== 'string' || raw.id.length === 0) throw new Error('У знака нет идентификатора')
+  const number = parseNumber(raw.number)
+  if (number === null) throw new Error('У знака нет номера')
+  const point = parsePoint(raw, 'Координата знака')
+  return {
+    id: raw.id,
+    number,
+    x: point.x,
+    y: point.y,
+  }
+}
+
+function rotateOffset(x: number, y: number, rotationDeg: number, offset: PlanPoint): PlanPoint {
+  const radians = (rotationDeg * Math.PI) / 180
+  const cos = Math.cos(radians)
+  const sin = Math.sin(radians)
+  return {
+    x: x + offset.x * cos + offset.y * sin,
+    y: y - offset.x * sin + offset.y * cos,
   }
 }
 

@@ -7,12 +7,12 @@ description: Правит локальный конструктор трасс �
 
 ## Карта
 
-- `src/model/course.ts` — чертёж, `snap`, `parseCourse`, версия 1
+- `src/model/course.ts` — чертёж, `snap`, `parseCourse`, версия 1. Снаряды и знаки — разные списки. Линии хода нет.
 - `src/rules/equipment.ts` — размеры, лимиты комплекта и классов
 - `src/rules/classChecks.ts` — предупреждения, без блокировки правки
 - `src/scene/viewport.ts` — одна сцена, ортокамера сверху и перспектива
 - `src/scene/courseView.ts`, `src/scene/meshes.ts` — ринг, сетка, снаряды
-- `src/editor/interaction.ts` — постановка, перетаскивание, поворот, табличка
+- `src/editor/interaction.ts` — перетаскивание стоящих снарядов, знаков и поворот. Новые ставятся переносом с палитры.
 - `src/ui/panel.ts` — русская панель
 - `src/persist/storage.ts` — черновик `hoopers.course.draft` и файл `trassa-hupers.json`
 
