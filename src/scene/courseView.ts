@@ -31,9 +31,15 @@ export function syncCourseView(scene: THREE.Scene, course: CourseDocument, selec
 }
 
 function createGround(course: CourseDocument): THREE.Mesh {
+  const material = new THREE.MeshStandardMaterial({
+    color: '#7f9a68',
+    roughness: 1,
+    side: THREE.BackSide,
+  })
+  material.shadowSide = THREE.FrontSide
   const mesh = new THREE.Mesh(
     new THREE.PlaneGeometry(course.ring.lengthM, course.ring.widthM),
-    new THREE.MeshStandardMaterial({ color: '#7f9a68', roughness: 1 }),
+    material,
   )
   mesh.rotation.x = -Math.PI / 2
   mesh.position.set(course.ring.lengthM / 2, 0, course.ring.widthM / 2)

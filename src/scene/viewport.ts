@@ -38,6 +38,15 @@ export function createViewport(host: HTMLElement): Viewport {
   controls.maxDistance = 180
   controls.mouseButtons.RIGHT = THREE.MOUSE.PAN
   controls.enabled = false
+  // Проекция объёма зеркалит X. Без этого перетаскивание едет в обратную сторону.
+  const orbit = controls as unknown as {
+    _rotateLeft(angle: number): void
+    _panLeft(distance: number, matrix: THREE.Matrix4): void
+  }
+  const rotateLeft = orbit._rotateLeft.bind(orbit)
+  const panLeft = orbit._panLeft.bind(orbit)
+  orbit._rotateLeft = (angle) => rotateLeft(-angle)
+  orbit._panLeft = (distance, matrix) => panLeft(-distance, matrix)
 
   const hemi = new THREE.HemisphereLight('#f4f7fb', '#6d8b58', 0.85)
   scene.add(hemi)
@@ -85,7 +94,8 @@ export function createViewport(host: HTMLElement): Viewport {
       sun.target.position.copy(center)
       sun.target.updateMatrixWorld()
       if (!framed) {
-        perspectiveCamera.position.set(center.x + lengthM * 0.05, Math.max(lengthM, widthM) * 0.62, center.z + widthM * 1.05)
+        // С юга (−Z) верх плана остаётся вдали. Зеркало проекции по X ставит малый x, как цифру 1, слева.
+        perspectiveCamera.position.set(center.x + lengthM * 0.05, Math.max(lengthM, widthM) * 0.62, center.z - widthM * 1.05)
         framed = true
       } else if (offset.lengthSq() > 0) {
         perspectiveCamera.position.copy(center).add(offset)
@@ -129,10 +139,18 @@ export function createViewport(host: HTMLElement): Viewport {
           renderer.render(scene, topCamera)
         } else {
           controls.update()
+          mirrorProjectionX(perspectiveCamera)
           renderer.render(scene, perspectiveCamera)
         }
       })
     },
+  }
+
+  function mirrorProjectionX(camera: THREE.PerspectiveCamera) {
+    camera.updateProjectionMatrix()
+    const elements = camera.projectionMatrix.elements
+    elements[0] = -Math.abs(elements[0])
+    camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert()
   }
 
   function layout() {

@@ -3,21 +3,22 @@ import type { Obstacle, ZoneShape } from '../model/course.ts'
 import type { ViewMode } from '../editor/types.ts'
 import { EQUIPMENT } from '../rules/equipment.ts'
 
-const archMaterial = new THREE.MeshStandardMaterial({ color: '#c0392b', roughness: 0.45, metalness: 0.08 })
-const barrelMaterial = new THREE.MeshStandardMaterial({ color: '#a04020', roughness: 0.62 })
-const barrelBandMaterial = new THREE.MeshStandardMaterial({ color: '#f0d78c', roughness: 0.45, metalness: 0.12 })
-const barrelCapMaterial = new THREE.MeshStandardMaterial({ color: '#7b3418', roughness: 0.7 })
-const gateMaterial = new THREE.MeshStandardMaterial({ color: '#7b241c', roughness: 0.55 })
-const tunnelMaterial = new THREE.MeshStandardMaterial({ color: '#1a5276', roughness: 0.42, metalness: 0.06 })
-const tunnelRimMaterial = new THREE.MeshStandardMaterial({ color: '#154360', roughness: 0.35, metalness: 0.12 })
-const coneMaterial = new THREE.MeshStandardMaterial({ color: '#e67e22', roughness: 0.5 })
+// У обеих камер проекция зеркалит X, чтобы план и объём совпадали слева направо.
+// BackSide снова делает наружную грань лицевой, иначе нормаль смотрит вниз.
+const archMaterial = lit('#c0392b', 0.45, 0.08)
+const barrelMaterial = lit('#a04020', 0.62)
+const barrelBandMaterial = lit('#f0d78c', 0.45, 0.12)
+const barrelCapMaterial = lit('#7b3418', 0.7)
+const gateMaterial = lit('#7b241c', 0.55)
+const tunnelMaterial = lit('#1a5276', 0.42, 0.06)
+const tunnelRimMaterial = lit('#154360', 0.35, 0.12)
+const coneMaterial = lit('#e67e22', 0.5)
 
 const archPlanMaterial = planMaterial('#c0392b')
 const barrelPlanMaterial = planMaterial('#a04020')
 const barrelPlanFill = planMaterial('#c56a3a')
 const gatePlanMaterial = planMaterial('#7b241c')
 const tunnelPlanMaterial = planMaterial('#1a5276')
-const tunnelHoleMaterial = planMaterial('#d4e6f1')
 const conePlanMaterial = planMaterial('#e67e22')
 const conePlanDot = planMaterial('#6e2c00')
 
@@ -30,13 +31,13 @@ const zoneMaterial = new THREE.MeshBasicMaterial({
 })
 const zoneSelectedMaterial = zoneMaterial.clone()
 zoneSelectedMaterial.opacity = 0.78
-const zoneCurbMaterial = new THREE.MeshStandardMaterial({ color: '#e6b325', roughness: 0.45 })
-const handlerBodyMaterial = new THREE.MeshStandardMaterial({ color: '#1f4e79', roughness: 0.55 })
-const handlerHeadMaterial = new THREE.MeshStandardMaterial({ color: '#e0b08a', roughness: 0.65 })
+const zoneCurbMaterial = lit('#e6b325', 0.45)
+const handlerBodyMaterial = lit('#1f4e79', 0.55)
+const handlerHeadMaterial = lit('#e0b08a', 0.65)
 const handlerBodyPlan = planMaterial('#1f4e79')
 const handlerHeadPlan = planMaterial('#e0b08a')
 const selectionMaterial = new THREE.MeshBasicMaterial({ color: '#f7dc6f', side: THREE.DoubleSide })
-const handleMaterial = new THREE.MeshBasicMaterial({ color: '#f4d03f' })
+const handleMaterial = new THREE.MeshBasicMaterial({ color: '#f4d03f', side: THREE.DoubleSide })
 const pickMaterial = new THREE.MeshBasicMaterial({
   transparent: true,
   opacity: 0,
@@ -100,17 +101,14 @@ function createVolume(obstacle: Obstacle): THREE.Group {
 
 function archPlan(width: number, half: boolean): THREE.Group {
   const group = new THREE.Group()
-  group.add(ribbon(archPoints(width, half), 0.08, archPlanMaterial))
+  const stroke = 0.07
+  const bar = flatBox(width, stroke, archPlanMaterial)
+  group.add(bar)
+  const tick = flatBox(stroke, Math.max(width * 0.36, 0.2), archPlanMaterial)
+  // Полуарка: засечка у единственной стойки (−X). Полная арка — как на схеме, засечка справа.
+  tick.position.set((half ? -1 : 1) * (width / 2), PLAN_Y + 0.012, 0)
+  group.add(tick)
   return group
-}
-
-function archPoints(width: number, half: boolean): Array<[number, number]> {
-  const radius = width / 2
-  const mouth = radius * 0.75
-  if (half) {
-    return [[-radius, mouth], ...arcPoints(radius, Math.PI, Math.PI * 1.5, 10)]
-  }
-  return [[-radius, mouth], ...arcPoints(radius, Math.PI, Math.PI * 2, 16), [radius, mouth]]
 }
 
 function barrelPlan(diameter: number): THREE.Group {
@@ -144,12 +142,26 @@ function conePlan(diameter: number): THREE.Group {
 
 function tunnelPlan(width: number, length: number): THREE.Group {
   const group = new THREE.Group()
-  group.add(shapeOnGround(roundedRect(width / 2, length / 2), tunnelPlanMaterial, PLAN_Y))
-  const inset = 0.07
-  const innerWidth = Math.max(width - inset * 2, 0.08)
-  const innerLength = Math.max(length - inset * 2, 0.08)
-  group.add(shapeOnGround(roundedRect(innerWidth / 2, innerLength / 2), tunnelHoleMaterial, PLAN_Y + 0.01))
+  const stroke = 0.07
+  addRectOutline(group, width, length, stroke, tunnelPlanMaterial)
+  const stick = Math.min(width * 0.55, Math.max(width - stroke * 3, stroke))
+  for (const side of [-1, 1]) {
+    const mark = flatBox(stick, stroke, tunnelPlanMaterial)
+    mark.position.set(0, PLAN_Y + 0.012, side * length * 0.22)
+    group.add(mark)
+  }
   return group
+}
+
+function addRectOutline(group: THREE.Group, width: number, length: number, stroke: number, material: THREE.Material): void {
+  for (const side of [-1, 1]) {
+    const across = flatBox(width + stroke, stroke, material)
+    across.position.z = side * (length / 2)
+    group.add(across)
+    const along = flatBox(stroke, length + stroke, material)
+    along.position.x = side * (width / 2)
+    group.add(along)
+  }
 }
 
 function archVolume(width: number, half: boolean): THREE.Group {
@@ -378,6 +390,17 @@ function solid(geometry: THREE.BufferGeometry, material: THREE.Material): THREE.
   return mesh
 }
 
+function lit(color: string, roughness: number, metalness = 0): THREE.MeshStandardMaterial {
+  const material = new THREE.MeshStandardMaterial({
+    color,
+    roughness,
+    metalness,
+    side: THREE.BackSide,
+  })
+  material.shadowSide = THREE.FrontSide
+  return material
+}
+
 function planMaterial(color: string): THREE.MeshBasicMaterial {
   return new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide })
 }
@@ -397,70 +420,3 @@ function flatBox(width: number, depth: number, material: THREE.Material): THREE.
   return mesh
 }
 
-function shapeOnGround(shape: THREE.Shape, material: THREE.Material, y: number): THREE.Mesh {
-  const geometry = new THREE.ShapeGeometry(shape, 16)
-  geometry.rotateX(-Math.PI / 2)
-  geometry.rotateY(Math.PI)
-  const mesh = new THREE.Mesh(geometry, material)
-  mesh.position.y = y
-  mesh.userData.disposeGeometry = true
-  return mesh
-}
-
-function roundedRect(halfX: number, halfY: number): THREE.Shape {
-  const radius = Math.min(halfX, halfY) * 0.98
-  const shape = new THREE.Shape()
-  shape.moveTo(-halfX + radius, -halfY)
-  shape.lineTo(halfX - radius, -halfY)
-  shape.absarc(halfX - radius, -halfY + radius, radius, -Math.PI / 2, 0, false)
-  shape.lineTo(halfX, halfY - radius)
-  shape.absarc(halfX - radius, halfY - radius, radius, 0, Math.PI / 2, false)
-  shape.lineTo(-halfX + radius, halfY)
-  shape.absarc(-halfX + radius, halfY - radius, radius, Math.PI / 2, Math.PI, false)
-  shape.lineTo(-halfX, -halfY + radius)
-  shape.absarc(-halfX + radius, -halfY + radius, radius, Math.PI, Math.PI * 1.5, false)
-  return shape
-}
-
-function arcPoints(radius: number, from: number, to: number, steps: number): Array<[number, number]> {
-  const points: Array<[number, number]> = []
-  for (let index = 0; index <= steps; index += 1) {
-    const angle = from + ((to - from) * index) / steps
-    points.push([Math.cos(angle) * radius, Math.sin(angle) * radius])
-  }
-  return points
-}
-
-function ribbon(points: Array<[number, number]>, width: number, material: THREE.Material): THREE.Mesh {
-  const positions: number[] = []
-  const half = width / 2
-  const dirs = points.map((_, index) => {
-    const prev = points[Math.max(0, index - 1)]
-    const next = points[Math.min(points.length - 1, index + 1)]
-    const dx = next[0] - prev[0]
-    const dz = next[1] - prev[1]
-    const length = Math.hypot(dx, dz) || 1
-    return [-dz / length, dx / length]
-  })
-  for (let index = 0; index < points.length - 1; index += 1) {
-    const a = points[index]
-    const b = points[index + 1]
-    const pa = dirs[index]
-    const pb = dirs[index + 1]
-    const leftA: [number, number] = [a[0] + pa[0] * half, a[1] + pa[1] * half]
-    const rightA: [number, number] = [a[0] - pa[0] * half, a[1] - pa[1] * half]
-    const leftB: [number, number] = [b[0] + pb[0] * half, b[1] + pb[1] * half]
-    const rightB: [number, number] = [b[0] - pb[0] * half, b[1] - pb[1] * half]
-    pushTriangle(positions, leftA, rightA, leftB)
-    pushTriangle(positions, rightA, rightB, leftB)
-  }
-  const geometry = new THREE.BufferGeometry()
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-  const mesh = new THREE.Mesh(geometry, material)
-  mesh.userData.disposeGeometry = true
-  return mesh
-}
-
-function pushTriangle(positions: number[], a: [number, number], b: [number, number], c: [number, number]): void {
-  positions.push(a[0], PLAN_Y, a[1], b[0], PLAN_Y, b[1], c[0], PLAN_Y, c[1])
-}
