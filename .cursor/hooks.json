@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": "node .cursor/hooks/guard-dev-server.mjs",
+        "matcher": "npm run dev",
+        "failClosed": false,
+        "timeout": 10
+      }
+    ]
+  }
+}

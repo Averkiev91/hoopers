@@ -1,0 +1,142 @@
+:root {
+  color: #1e2a22;
+  background: #d7e0d4;
+  font-family: "Segoe UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #app {
+  margin: 0;
+  height: 100%;
+}
+
+#app {
+  display: flex;
+  min-height: 100%;
+}
+
+#panel {
+  width: 320px;
+  flex: none;
+  overflow: auto;
+  background: #f7f4ec;
+  border-right: 1px solid #d9d1c3;
+  padding: 16px 16px 24px;
+}
+
+#viewport {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+#viewport canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+h1, h2, p { margin: 0; }
+
+h1 { font-size: 20px; font-weight: 650; }
+
+h2 {
+  margin: 16px 0 8px;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #5c675c;
+}
+
+.panel-header p,
+.hint {
+  margin-top: 4px;
+  color: #5c675c;
+  font-size: 13px;
+}
+
+.fields, .tools, .segmented, .file-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.fields { margin-top: 14px; }
+
+label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.check {
+  display: flex;
+  grid-template-columns: none;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+input, select, button {
+  font: inherit;
+  color: inherit;
+}
+
+input, select {
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid #d9d1c3;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.tools { grid-template-columns: 1fr 1fr; }
+
+.tools button:first-child { grid-column: 1 / -1; }
+
+.segmented, .file-actions { grid-template-columns: 1fr 1fr; }
+
+.file-actions { margin-top: 16px; }
+
+button {
+  padding: 8px 10px;
+  border: 1px solid #d9d1c3;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+}
+
+button:hover { border-color: #8d9a86; }
+
+button.is-active {
+  background: #9d2c22;
+  border-color: #9d2c22;
+  color: #fff;
+}
+
+#number-fields {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+#selection-meta { margin-top: 4px; color: #3d4a40; }
+
+.warnings ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.warnings li { margin: 6px 0; color: #8a5a12; }
+
+.ok { margin-top: 8px; color: #2f6b45; }
+
+.status { margin-top: 8px; color: #9d2c22; }
+
+@media (max-width: 800px) {
+  #app { flex-direction: column; }
+  #panel { width: auto; max-height: 46vh; }
+  #viewport { min-height: 54vh; }
+}
