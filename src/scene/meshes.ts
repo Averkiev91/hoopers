@@ -273,15 +273,12 @@ function tunnelVolume(diameter: number, length: number): THREE.Group {
   return group
 }
 
-export function createSignPlate(label: string, view: ViewMode): THREE.Mesh {
+export function createSignPlate(label: string): THREE.Mesh {
   const geometry = new THREE.PlaneGeometry(0.8, 0.62)
   // Плоскость лежит rotation.x = −π/2, поэтому верх текстуры смотрит в −Z.
-  // Сверху это низ экрана. В объёме камера с юга, и проекция ещё зеркалит X.
-  if (view === 'top') flipUv(geometry, 'y')
-  else {
-    flipUv(geometry, 'x')
-    flipUv(geometry, 'y')
-  }
+  // Отражение V ставит верх цифры в +Z. Проекция объёма уже зеркалит X,
+  // как левая и правая грани верхней камеры. Второе отражение U зеркалит цифру.
+  flipUv(geometry, 'y')
   const material = new THREE.MeshBasicMaterial({
     map: numberTexture(label),
     side: THREE.DoubleSide,

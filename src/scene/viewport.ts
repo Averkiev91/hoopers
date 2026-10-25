@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import type { ViewMode } from '../editor/types.ts'
+import { orientSigns } from './courseView.ts'
 
 export interface Viewport {
   readonly scene: THREE.Scene
@@ -139,6 +140,8 @@ export function createViewport(host: HTMLElement): Viewport {
         topCamera.lookAt(topTarget)
         renderer.render(scene, topCamera)
       } else {
+        controls.update()
+        orientSigns(scene, controls.getAzimuthalAngle())
         mirrorProjectionX(perspectiveCamera)
         renderer.render(scene, perspectiveCamera)
       }
@@ -153,6 +156,7 @@ export function createViewport(host: HTMLElement): Viewport {
           renderer.render(scene, topCamera)
         } else {
           controls.update()
+          orientSigns(scene, controls.getAzimuthalAngle())
           mirrorProjectionX(perspectiveCamera)
           renderer.render(scene, perspectiveCamera)
         }

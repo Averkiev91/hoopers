@@ -25,7 +25,7 @@ export function syncCourseView(scene: THREE.Scene, course: CourseDocument, selec
   }
   for (const sign of course.signs) {
     const selectedSign = selected?.kind === 'sign' && selected.id === sign.id
-    root.add(createSignObject(sign, selectedSign, view))
+    root.add(createSignObject(sign, selectedSign))
   }
   scene.add(root)
 }
@@ -110,11 +110,21 @@ function zoneGeometry(shape: ZoneShape): THREE.BufferGeometry {
   return new THREE.PlaneGeometry(2, 2)
 }
 
-function createSignObject(sign: NumberSign, selected: boolean, view: ViewMode): THREE.Group {
+/** Азимут OrbitControls с юга равен π, и табличка остаётся без доворота. */
+export function orientSigns(scene: THREE.Scene, azimuth: number): void {
+  const root = scene.getObjectByName(ROOT_NAME)
+  if (!root) return
+  const yaw = azimuth + Math.PI
+  for (const child of root.children) {
+    if (child.name.startsWith('sign:')) child.rotation.y = yaw
+  }
+}
+
+function createSignObject(sign: NumberSign, selected: boolean): THREE.Group {
   const group = new THREE.Group()
   group.name = `sign:${sign.id}`
   group.position.set(sign.x, 0, sign.y)
-  const plate = createSignPlate(String(sign.number), view)
+  const plate = createSignPlate(String(sign.number))
   plate.position.y = 0.08
   group.add(plate)
   tag(group, { kind: 'sign', id: sign.id })
