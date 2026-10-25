@@ -16,7 +16,6 @@
     "vitest": "^5.0.5"
   },
   "dependencies": {
-    "graphify": "^1.0.0",
     "three": "^0.186.1"
   }
 }
